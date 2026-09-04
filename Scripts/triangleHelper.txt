@@ -1,0 +1,431 @@
+function crossProduct2d(p1, p2, p3) {
+  return (p2[0] - p1[0]) * (p3[1] - p1[1]) - (p2[1] - p1[1]) * (p3[0] - p1[0]);
+}
+
+function getClosestPointOnTriangle(p, a, b, c) {
+    const ab = vec3.subtract(b, a);
+    const ac = vec3.subtract(c, a);
+    const ap = vec3.subtract(p, a);
+
+    // Check if P in vertex region outside A
+    const d1 = vec3.dot(ab, ap);
+    const d2 = vec3.dot(ac, ap);
+    if (d1 <= 0 && d2 <= 0) return a;
+
+    // Check if P in vertex region outside B
+    const bp = vec3.subtract(p, b);
+    const d3 = vec3.dot(ab, bp);
+    const d4 = vec3.dot(ac, bp);
+    if (d3 >= 0 && d4 <= d3) return b;
+
+    // Check if P in edge region of AB, if so return projection of P onto AB
+    const vc = d1 * d4 - d3 * d2;
+    if (vc <= 0 && d1 >= 0 && d3 <= 0) {
+        const v = d1 / (d1 - d3);
+        return [a[0] + v * ab[0], a[1] + v * ab[1], a[2] + v * ab[2]];
+    }
+
+    // Check if P in vertex region outside C
+    const cp = vec3.subtract(p, c);
+    const d5 = vec3.dot(ab, cp);
+    const d6 = vec3.dot(ac, cp);
+    if (d6 >= 0 && d5 <= d6) return c;
+
+    // Check if P in edge region of AC, if so return projection of P onto AC
+    const vb = d5 * d2 - d1 * d6;
+    if (vb <= 0 && d2 >= 0 && d6 <= 0) {
+        const w = d2 / (d2 - d6);
+        return [a[0] + w * ac[0], a[1] + w * ac[1], a[2] + w * ac[2]];
+    }
+
+    // Check if P in edge region of BC, if so return projection of P onto BC
+    const va = d3 * d6 - d5 * d4;
+    if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0) {
+        const w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+        const bc = vec3.subtract(c, b);
+        return [b[0] + w * bc[0], b[1] + w * bc[1], b[2] + w * bc[2]];
+    }
+
+    // P is inside face region. Compute Q through its barycentric coordinates (u, v, w)
+    const denom = 1 / (va + vb + vc);
+    const v_final = vb * denom;
+    const w_final = vc * denom;
+    
+    return [
+        a[0] + ab[0] * v_final + ac[0] * w_final,
+        a[1] + ab[1] * v_final + ac[1] * w_final,
+        a[2] + ab[2] * v_final + ac[2] * w_final
+    ];
+}
+
+
+function crossProduct(p1, p2, p3) {
+  // 1. Define the two vectors emanating from p1:
+  // Vector A = p1 to p2
+  const Ax = p2[0] - p1[0];
+  const Ay = p2[1] - p1[1];
+  const Az = p2[2] - p1[2];
+
+  // Vector B = p1 to p3
+  const Bx = p3[0] - p1[0];
+  const By = p3[1] - p1[1];
+  const Bz = p3[2] - p1[2];
+
+  // 2. Compute the components of the resulting normal vector N = A x B
+  // Nx = Ay * Bz - Az * By
+  const Nx = Ay * Bz - Az * By;
+
+  // Ny = Az * Bx - Ax * Bz
+  const Ny = Az * Bx - Ax * Bz;
+
+  // Nz = Ax * By - Ay * Bx
+  const Nz = Ax * By - Ay * Bx;
+
+  // 3. Return the 3D normal vector
+  return [
+    Nx,
+    Ny,
+    Nz
+  ];
+}
+
+  function is_point_in_triangle(p, a, b, c) {
+    let cp1 = crossProduct2d(a, b, p)
+    let cp2 = crossProduct2d(b, c, p)
+    let cp3 = crossProduct2d(c, a, p)
+
+    let has_neg = (cp1 < 0) || (cp2 < 0) || (cp3 < 0);
+    let has_pos = (cp1 > 0) || (cp2 > 0) || (cp3 > 0);
+
+    return !(has_neg && has_pos);
+  }
+
+  function orientation(p, q, r) {
+    // Determines the orientation of the ordered triplet (p, q, r)
+    // 0 --> p, q and r are collinear
+    // 1 --> Clockwise
+    // 2 --> Counterclockwise
+    const val = (q[1] - p[1]) * (r[0] - q[0]) - (q[0] - p[0]) * (r[1] - q[1]);
+
+    if (val === 0) return 0; // Collinear
+    return (val > 0) ? 1 : 2; // Clockwise or Counterclockwise
+  }
+
+function onSegment(p, q, r) {
+    // Given three collinear points p, q, r, checks if point q lies on segment 'pr'
+    if (q[0] <= Math.max(p[0], r[0]) && q[0] >= Math.min(p[0], r[0]) &&
+        q[1] <= Math.max(p[1], r[1]) && q[1] >= Math.min(p[1], r[1])) {
+        return true;
+    }
+    return false;
+}
+
+function doIntersect(p1, q1, p2, q2) {
+    // Finds the four orientations needed for general and special cases
+    const o1 = orientation(p1, q1, p2);
+    const o2 = orientation(p1, q1, q2);
+    const o3 = orientation(p2, q2, p1);
+    const o4 = orientation(p2, q2, q1);
+
+    // General case: If orientations are different, they intersect
+    if (o1 !== 0 && o2 !== 0 && o3 !== 0 && o4 !== 0 &&
+        o1 !== o2 && o3 !== o4) {
+        return true;
+    }
+
+    // Special Cases:
+    // p1, q1, p2 are collinear and p2 lies on segment p1q1
+    if (o1 === 0 && onSegment(p1, p2, q1)) return true;
+
+    // p1, q1, q2 are collinear and q2 lies on segment p1q1
+    if (o2 === 0 && onSegment(p1, q2, q1)) return true;
+
+    // p2, q2, p1 are collinear and p1 lies on segment p2q2
+    if (o3 === 0 && onSegment(p2, p1, q2)) return true;
+
+    // p2, q2, q1 are collinear and q1 lies on segment p2q2
+    if (o4 === 0 && onSegment(p2, q1, q2)) return true;
+
+    return false; // Doesn't fall into any of the above cases
+}
+
+
+
+let buf = document.getElementById("buf").getContext("2d");
+function triangle(x1, y1, x2, y2, x3, y3) {
+  buf.beginPath();
+  buf.moveTo(x1, y1);
+  buf.lineTo(x2, y2);
+  buf.lineTo(x3, y3);
+  buf.closePath();
+  buf.fill();
+};
+
+function getTriAngle(x1, y1, x2, y2, x3, y3) {
+  let BA = [x1 - x2, y1 - y2];
+  let BC = [x3 - x2, y3 - y2];
+  let dp = ((BA[0] * BC[0]) + (BA[1] * BC[1]));
+  let absBA = Math.sqrt(BA[0]*BA[0] + BA[1]*BA[1]);
+  let absBC = Math.sqrt(BC[0]*BC[0] + BC[1]*BC[1]);
+  return ((Math.acos(dp / (absBA * absBC)))) * 180/Math.PI;
+};
+
+function getSmallestTriAngle(x1,y1,x2,y2,x3,y3) {
+  let a = getTriAngle(x1,y1,x2,y2,x3,y3);
+  let b = getTriAngle(x2,y2,x3,y3,x1,y1);
+  let c = getTriAngle(x3,y3,x1,y1,x2,y2);
+  return Math.min(a, b, c);
+};
+
+
+
+function flipQuadIndexed(arr) {
+  const p = [
+    [arr[0],  arr[1], arr[2]],
+    [arr[3],  arr[4], arr[5]],
+    [arr[6],  arr[7], arr[8]],
+    [arr[9],  arr[10], arr[11]],
+    [arr[12],  arr[13], arr[14]],
+    [arr[15], arr[16], arr[17]]
+  ];
+
+  let dupes = [];
+  for (let i = 0 ; i < p.length; i++) {
+    for (let j = 0; j < p.length; j++) {
+      if (j == i) {continue;}
+      if (p[i][0] == p[j][0] && p[i][1] == p[j][1]) {
+        console.log(p[i] + ", " + p[j]);
+        console.log(p[i][2] + ", " + p[j][2]);
+        console.log(vordasModel.verts[p[i][2]] + ", " + vordasModel.verts[p[j][2]]);
+        dupes.push([p[i][0], p[i][1], p[i][2]]);
+        p.splice(j, 1);
+        p.splice(i, 1);
+        i--;
+      }
+    }
+  }
+
+  return [
+    ...dupes[0], ...p[0], ...p[1],
+    ...p[1], ...p[0], ...dupes[1]
+  ];
+
+  return p;
+}
+
+
+function flipQuad2(arr) {
+  const p = [
+    [arr[0],  arr[1]],
+    [arr[2],  arr[3]],
+    [arr[4],  arr[5]],
+    [arr[6],  arr[7]],
+    [arr[8],  arr[9]],
+    [arr[10], arr[11]]
+  ];
+
+  let dupes = [];
+  for (let i = 0 ; i < p.length; i++) {
+    for (let j = 0; j < p.length; j++) {
+      if (j == i) {continue;}
+      if (p[i][0] == p[j][0] && p[i][1] == p[j][1]) {
+        dupes.push([p[i][0], p[i][1]]);
+        p.splice(j, 1);
+        p.splice(i, 1);
+        i--;
+      }
+    }
+  }
+
+  return [
+    ...dupes[0], ...p[0], ...p[1],
+    ...p[1], ...p[0], ...dupes[1]
+  ];
+
+  return p;
+}
+
+
+
+function findBetterTriangle(triangles, i) {
+  let smallestAngle = getSmallestTriAngle(triangles[i], triangles[i+1], triangles[i+3], triangles[i+4], triangles[i+6], triangles[i+7]);
+  let returner = false;
+    if (smallestAngle >= 0) {
+      //let neighbors = [];
+      let longestEdge = [0, 0, -1];
+      for (let j = 0; j < 9; j += 3) {
+        let adders = [3, 3, 3, 3, 3, 3, -6, -6, -6];
+        let leDist = dist3d(triangles[i+j], 0, triangles[i+j+1],
+                    triangles[i+j + adders[j]], 0, triangles[i+j+1 + adders[j]]);
+        if (leDist > longestEdge[2]) {
+          longestEdge = [i+j, i+j + adders[j], leDist];
+        }
+      }
+      for (let j = 0; j < triangles.length; j += 9) {
+        let shared = 0;
+        if (j == i) {continue;}
+        for (let k = 0; k < 9; k += 3) {
+          if (triangles[j+k] == triangles[longestEdge[0]] && triangles[j+1+k] == triangles[longestEdge[0]+1]) {
+            shared++;
+          } else if (triangles[j+k] == triangles[longestEdge[1]] && triangles[j+1+k] == triangles[longestEdge[1]+1]) {
+            shared++;
+          }
+        }
+        if (shared != 2) {continue;}
+
+        let mySmallestAngle = getSmallestTriAngle(triangles[j], triangles[j+1], triangles[j+3], triangles[j+4], triangles[j+6], triangles[j+7]);
+        //console.log("consider " + smallestAngle +  ", " + mySmallestAngle);
+        if (smallestAngle < 30 || mySmallestAngle < 30) {
+          //console.log(i, j);
+          let trianglesRot = flipQuadIndexed([
+            triangles[i], triangles[i+1], triangles[i+2],
+            triangles[i+3], triangles[i+4], triangles[i+5],
+            triangles[i+6], triangles[i+7], triangles[i+8],
+            triangles[j], triangles[j+1], triangles[j+2],
+            triangles[j+3], triangles[j+4], triangles[j+5],
+            triangles[j+6], triangles[j+7], triangles[j+8]
+          ]);
+
+          let counterSmallest = getSmallestTriAngle(trianglesRot[9], trianglesRot[10], trianglesRot[12], trianglesRot[13], trianglesRot[15], trianglesRot[16]);
+          //console.log(counterSmallest);
+          //console.log(trianglesRot);
+          let counterMySmallest = getSmallestTriAngle(trianglesRot[0], trianglesRot[1], trianglesRot[3], trianglesRot[4], trianglesRot[6], trianglesRot[7]);
+            //console.log("consider " + smallestAngle +  ", " + mySmallestAngle + ", " + counterSmallest + ", " + counterMySmallest);
+          if (smallestAngle == 0 || counterMySmallest > mySmallestAngle && counterSmallest > smallestAngle) {
+            for (let k = 0; k < 9; k++) {
+              triangles[j + k] = trianglesRot[k];
+              triangles[i + k] = trianglesRot[k + 9];
+            }
+            //console.log("swap " + smallestAngle +  ", " + mySmallestAngle + ", " + counterSmallest + ", " + counterMySmallest);
+            //console.log(trianglesRot);
+            
+            if (getOrientation(
+                triangles[i], triangles[i+1],
+                triangles[i+3], triangles[i+4],
+                triangles[i+6], triangles[i+7]) != "counter-clockwise") {
+              let temp = [triangles[i], triangles[i+1], triangles[i+2]];
+              triangles[i] = triangles[i+3];
+              triangles[i+1] = triangles[i+4];
+              triangles[i+2] = triangles[i+5];
+              triangles[i+3] = temp[0];
+              triangles[i+4] = temp[1];
+              triangles[i+5] = temp[2];
+            }
+            if (getOrientation(
+                triangles[j], triangles[j+1],
+                triangles[j+3], triangles[j+4],
+                triangles[j+6], triangles[j+7]) != "counter-clockwise") {
+              let temp = [triangles[j], triangles[j+1], triangles[j+2]];
+              triangles[j] = triangles[j+3];
+              triangles[j+1] = triangles[j+4];
+              triangles[j+2] = triangles[j+5];
+              triangles[j+3] = temp[0];
+              triangles[j+4] = temp[1];
+              triangles[j+5] = temp[2];
+            }
+            returner = true;
+            j = Infinity;
+            //i2 = Infinity;
+          }
+        }
+        //if (shared > 3) {console.log("uh...");}
+        //if (shared == 2) {
+        //}
+      }
+      //console.log(neighbors);
+    }
+  if (returner) {console.log("yes");}
+  return returner;
+}
+
+/*function findBetterTriangle(triangles, i) {
+  let smallestAngle = getSmallestTriAngle(triangles[i], triangles[i+1], triangles[i+3], triangles[i+4], triangles[i+6], triangles[i+7]);
+  let returner = false;
+    if (smallestAngle > 0) {
+      //let neighbors = [];
+      let longestEdge = [0, 0, -1];
+      console.log("maybe");
+      for (let j = 0; j < 9; j += 3) {
+        let adders = [3, 3, 3, 3, 3, 3, -6, -6, -6];
+        let leDist = dist3d(triangles[i+j], 0, triangles[i+j+1],
+                    triangles[i+j + adders[j]], 0, triangles[i+j+1 + adders[j]]);
+        if (leDist > longestEdge[2]) {
+          longestEdge = [i+j, i+j + adders[j], leDist];
+        }
+      }
+      console.log("maybe");
+      for (let j = 0; j < triangles.length; j += 9) {
+        let shared = 0;
+        if (j == i) {continue;}
+        for (let k = 0; k < 9; k += 3) {
+          if (triangles[j+k] == triangles[longestEdge[0]] && triangles[j+1+k] == triangles[longestEdge[0]+1]) {
+            shared++;
+          } else if (triangles[j+k] == triangles[longestEdge[1]] && triangles[j+1+k] == triangles[longestEdge[1]+1]) {
+            shared++;
+          }
+        }
+        if (shared != 2) {continue;}
+        
+        let mySmallestAngle = getSmallestTriAngle(triangles[j], triangles[j+1], triangles[j+3], triangles[j+4], triangles[j+6], triangles[j+7]);
+        //console.log("consider " + smallestAngle +  ", " + mySmallestAngle);
+        if (smallestAngle < 30 || mySmallestAngle < 30) {
+          //console.log(i, j);
+          let trianglesRot = flipQuadIndexed([
+            triangles[i], triangles[i+1], triangles[i+2],
+            triangles[i+3], triangles[i+4], triangles[i+5],
+            triangles[i+6], triangles[i+7], triangles[i+8],
+            triangles[j], triangles[j+1], triangles[i+2],
+            triangles[j+3], triangles[j+4], triangles[i+5],
+            triangles[j+6], triangles[j+7], triangles[i+8]
+          ]);
+
+          let counterSmallest = getSmallestTriAngle(trianglesRot[6], trianglesRot[7], trianglesRot[8], trianglesRot[9], trianglesRot[10], trianglesRot[11]);
+          //console.log(counterSmallest);
+          //console.log(trianglesRot);
+          let counterMySmallest = getSmallestTriAngle(trianglesRot[0], trianglesRot[1], trianglesRot[2], trianglesRot[3], trianglesRot[4], trianglesRot[5]);
+            //console.log("consider " + smallestAngle +  ", " + mySmallestAngle + ", " + counterSmallest + ", " + counterMySmallest);
+          if (counterMySmallest > mySmallestAngle && counterSmallest > smallestAngle) {
+            for (let k = 0; k < 9; k++) {
+              triangles[j + k] = trianglesRot[k];
+              triangles[i + k] = trianglesRot[k + 9];
+            }
+            //console.log("swap " + smallestAngle +  ", " + mySmallestAngle + ", " + counterSmallest + ", " + counterMySmallest);
+            //console.log(trianglesRot);
+            
+            if (getOrientation(
+                triangles[i], triangles[i+1],
+                triangles[i+3], triangles[i+4],
+                triangles[i+6], triangles[i+7]) != "counter-clockwise") {
+              let temp = [triangles[i], triangles[i+1], triangles[i+2]];
+              triangles[i] = triangles[i+3];
+              triangles[i+1] = triangles[i+4];
+              triangles[i+2] = triangles[i+5];
+              triangles[i+3] = temp[0];
+              triangles[i+4] = temp[1];
+              triangles[i+5] = temp[2];
+            }
+            if (getOrientation(
+                triangles[j], triangles[j+1],
+                triangles[j+3], triangles[j+4],
+                triangles[j+6], triangles[j+7]) != "counter-clockwise") {
+              let temp = [triangles[j], triangles[j+1], triangles[j+2]];
+              triangles[j] = triangles[j+3];
+              triangles[j+1] = triangles[j+4];
+              triangles[j+2] = triangles[j+5];
+              triangles[j+3] = temp[0];
+              triangles[j+4] = temp[1];
+              triangles[j+5] = temp[2];
+            }
+            returner = true;
+            j = Infinity;
+            //i2 = Infinity;
+          }
+        }
+        //if (shared > 3) {console.log("uh...");}
+        //if (shared == 2) {
+        //}
+      }
+      //console.log(neighbors);
+    }
+  return returner;
+}*/

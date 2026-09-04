@@ -1,0 +1,519 @@
+function mrCube(x, y, z) {
+  this.pos = new Vec3(x, y, z);
+  this.ppos = new Vec3(x, y, z);
+  this.vel = new Vec3(0, 0, 0);
+  this.relVel = new Vec3(0, 0, 0);
+  this.forwardNormal = [0, 0, 1];
+  this.forwardDir = [0, 0, 1];
+  this.lastForwardDir = [0, 0, 1];
+  this.radius = 1;
+  this.grounded = false;
+  this.lastGravityNormal = [0, 1, 0];
+  this.gravityNormal = [0, 1, 0];
+  this.groundNormal = [0, 1, 0];
+  this.wallNormal = [0, 0, 0];
+  this.animFactor = 0;
+  this.raisedSide = false;
+  this.spinTimer = 0;
+  this.crouching = false;
+  this.longJumping = false;
+
+  this.camera = [10.0, 0, 0, 0]//rx, ry, rz
+  this.lastDir = [0, 0, 0];
+  this.maxSpeed = 0.3;
+  this.onWall = false;
+
+  this.lastUp = [0, 1, 0];
+  this.angle = 0;
+  this.targetAngle = 0;
+
+  this.carryMatrices = {};//m4.identity();
+  this.carryVec = [0,0,0];
+}
+
+
+mrCube.prototype.run = function() {
+  this.lastGravityNormal = [this.gravityNormal[0], this.gravityNormal[1], this.gravityNormal[2]];
+  if (vec3.dist(this.pos, [0, 90, 0]) < 40) {
+    this.gravityNormal = vec3.normalize(vec3.subtract(this.pos, [0, 90, 0]));
+    //this.camera[2] = -Math.atan2(this.pos.x, this.pos.z) + (Math.PI);
+    //this.camera[1] = Math.atan2(this.pos.y, this.pos.z);
+  } else {
+    this.gravityNormal = [0, 1, 0];
+    this.forwardNormal = [0, 0, 1];
+  }
+
+  
+  let jumpKey = keys[90];
+  let jumpKeyDown = keysDown[90];
+  let spinKeyDown = keysDown[88];
+  let crouchKey = keys[16];
+  if (controllers.length > 0) {
+    jumpKey = controllers[0].keys[0];
+    jumpKeyDown = controllers[0].keysDown[0];
+    spinKeyDown = controllers[0].keysDown[1];
+    //console.log(controllers[0].axes + "\n" + controllers[0].keys);
+    crouchKey = controllers[0].keys[6] + controllers[0].keys[7];
+  }
+  
+  let moveDir = [0,0,0];
+  if (keys[39]) moveDir[0] -= 1;
+  if (keys[37]) moveDir[0] += 1;
+  if (keys[40]) moveDir[2] -= 1;
+  if (keys[38]) moveDir[2] += 1;
+  if (controllers.length > 0 && controllers[0].axes.length >= 4) {
+    moveDir[0] -= controllers[0].axes[0];
+    moveDir[2] -= controllers[0].axes[1];
+    if (Math.abs(moveDir[0]) < 0.1) {moveDir[0] = 0;}
+    if (Math.abs(moveDir[2]) < 0.1) {moveDir[2] = 0;}
+  }
+  
+  if (keys[65]) {this.camera[2] -= degToRad(3);}
+  if (keys[68]) {this.camera[2] += degToRad(3);}
+  if (keys[87]) {this.camera[1] -= degToRad(3);}
+  if (keys[83]) {this.camera[1] += degToRad(3);}
+
+  if (controllers.length > 0 && controllers[0].axes.length >= 4) {
+    this.camera[2] += degToRad(3) * controllers[0].axes[2];
+    this.camera[1] += degToRad(3) * controllers[0].axes[3];
+  }
+
+  if (moveDir[0] == 0 && moveDir[2] == 0) {
+    this.lastUp = [this.gravityNormal[0], this.gravityNormal[1], this.gravityNormal[2]];
+  }
+
+  let od0 = moveDir[0];
+  let od2 = moveDir[2];
+  if (Math.abs(moveDir[0]) < 0.01) {moveDir[0] = 0;}
+  if (Math.abs(moveDir[2]) < 0.01) {moveDir[2] = 0;}
+  moveDir[0] = (Math.cos(this.camera[2]) * od0 - Math.sin(this.camera[2]) * od2);
+  moveDir[2] = Math.sin(this.camera[2]) * od0 + Math.cos(this.camera[2]) * od2;
+  if (moveDir[0] == 0) {moveDir[0] = Math.abs(0);}
+  if (moveDir[2] == 0) {moveDir[2] = Math.abs(0);}
+  if (this.grounded) {
+    this.lastDir = [moveDir[0], moveDir[1], moveDir[2]];
+    if (moveDir[0] != 0 || moveDir[2] != 0) {
+      this.targetAngle = -Math.atan2(moveDir[0], moveDir[2]);
+      //TODO: Fix this angle interpolation
+      
+      //this.angle -= (Math.abs(this.angle - targetAngle) / 5) * Math.sign(this.angle - targetAngle);
+    }
+  }
+  
+  if (this.targetAngle != this.angle) {
+    let delta = (this.targetAngle - this.angle + Math.PI) % (Math.PI * 2) - Math.PI;
+    if (delta < -Math.PI) delta += Math.PI * 2;
+  
+    let lerpFactor = 0.3;
+    if (Math.abs(delta) > Math.abs(Math.PI / 2)) {lerpFactor = 1;}
+    this.angle += delta * lerpFactor;
+  
+    if (Math.abs(delta) < 0.001 || Math.abs(this.relVel[2]) < 0.02) {
+      this.angle = this.targetAngle;
+    }
+  }
+  
+
+  if (this.spinTimer > 20 || this.grounded && this.spinTimer > 0) {this.spinTimer--;}
+  if (!this.grounded) {
+    this.groundNormal = [0, 1, 0];
+  } else if (this.maxSpeed > 0.3 && this.grounded) {
+    this.maxSpeed = (this.maxSpeed - 0.3) * 0.9 + 0.3;
+  }
+  let MAX_SPEED = this.maxSpeed;
+
+
+  if (this.grounded && jumpKeyDown) {
+    this.relVel[1] = 0.45;
+    this.grounded = false;
+    this.raisedSide = !this.raisedSide;
+  } else if (!this.grounded && this.relVel[1] > 0.1 && !jumpKey && this.spinTimer <= 0) {
+    this.relVel[1] = 0.1;
+  }
+
+  if (!this.grounded && spinKeyDown) {
+    this.relVel[2] = 0;
+    this.relVel[0] = 0;
+    this.relVel[1] = 0.35;
+    this.spinTimer = 30;
+  }
+
+  if (keysDown[32]) {this.relVel[1] = 1.0;}
+  
+  
+  if (this.grounded) {
+    this.relVel[0] *= 0.9;
+    this.relVel[2] *= 0.9;
+  }
+  if (this.grounded) {this.relVel[0] = 0;}
+  if (this.relVel[0] > MAX_SPEED) {this.relVel[0] = MAX_SPEED;}
+  this.relVel[0] = constrain(this.relVel[0], -0.3, 0.3);
+  if (this.relVel[2] > MAX_SPEED) {this.relVel[2] = MAX_SPEED;}
+  
+  if (!this.grounded) {
+    this.relVel[1] -= 0.015;
+  }
+  if (this.relVel[1] < -2) {this.relVel[1] = -2;}
+
+  ///
+  this.vel.x = this.vel.y = this.vel.z = 0;
+
+  // 1. Turn around the LOCAL up (gravityNormal)
+  //this.forwardDir = [0, 0, 1];
+  //if (!this.grounded || (moveDir[0] != 0 || moveDir[2] != 0)) {
+    this.forwardDir = [this.forwardNormal[0], this.forwardNormal[1], this.forwardNormal[2]];
+  //}
+  
+  const turnQ = Quaternion.fromAxisAngle(this.gravityNormal, -this.angle);
+  this.forwardDir = turnQ.rotateVector(this.forwardDir);
+  //this.forwardDir = vec3.normalize(this.forwardDir);
+
+  // 2. Ensure forwardDir is perpendicular to gravityNormal
+  // (In case of numerical drift or if forwardDir wasn't properly initialized)
+  let dot = this.forwardDir[0] * this.gravityNormal[0] + 
+            this.forwardDir[1] * this.gravityNormal[1] + 
+            this.forwardDir[2] * this.gravityNormal[2];
+  this.forwardDir[0] -= dot * this.gravityNormal[0];
+  this.forwardDir[1] -= dot * this.gravityNormal[1];
+  this.forwardDir[2] -= dot * this.gravityNormal[2];
+
+
+  dot = this.forwardNormal[0] * this.gravityNormal[0] + 
+        this.forwardNormal[1] * this.gravityNormal[1] + 
+        this.forwardNormal[2] * this.gravityNormal[2];
+  this.forwardNormal[0] -= dot * this.gravityNormal[0];
+  this.forwardNormal[1] -= dot * this.gravityNormal[1];
+  this.forwardNormal[2] -= dot * this.gravityNormal[2];
+  this.forwardNormal = vec3.normalize(this.forwardNormal);
+  //console.log(this.forwardNormal);
+
+  // Normalize forwardDir
+  const fwdMag = Math.sqrt(this.forwardDir[0]**2 + this.forwardDir[1]**2 + this.forwardDir[2]**2);
+  this.forwardDir[0] /= fwdMag;
+  this.forwardDir[1] /= fwdMag;
+  this.forwardDir[2] /= fwdMag;
+  
+  //cross product: up * forward = right
+  const rightDir = [
+    this.gravityNormal[1] * this.forwardDir[2] - this.gravityNormal[2] * this.forwardDir[1],
+    this.gravityNormal[2] * this.forwardDir[0] - this.gravityNormal[0] * this.forwardDir[2],
+    this.gravityNormal[0] * this.forwardDir[1] - this.gravityNormal[1] * this.forwardDir[0]
+  ];
+
+  if (moveDir[0] == 0 && moveDir[2] == 0) {
+    this.relVel[0] *= 0.9 + (this.grounded ? 0 : 0.05);
+    if (this.grounded || Math.abs(this.relVel[0]) < 0.01) {this.relVel[0] = 0;}
+    this.relVel[2] *= 0.9 + (this.grounded ? 0 : 0.05);
+    if (Math.abs(this.relVel[2]) < 0.01) {this.relVel[2] = 0;}
+  } else {
+    /*let moveLR = -vec3.dot(moveDir, vec3.normalize(vec3.cross(this.forwardDir, this.gravityNormal)));
+    let moveFB = vec3.dot(moveDir, this.forwardDir);
+    //console.log(this.forwardDir);
+    this.relVel[0] += moveLR * 0.05;
+    this.relVel[2] += moveFB * 0.05;*/
+    //this.relVel[0] += Math.abs(moveDir[0]) * 0.05;
+    if (this.grounded) {
+      this.relVel[2] += (Math.abs(moveDir[0]) + Math.abs(moveDir[2])) * 0.05;
+    } else {
+      let camBaseRight   = vec3.normalize(vec3.cross(this.gravityNormal, this.forwardNormal));
+      let camBaseForward = vec3.normalize(vec3.cross(camBaseRight, this.gravityNormal));
+      let rotRight   = vec3.rotateAroundAxis(camBaseRight,   this.gravityNormal, -this.camera[2]);
+      let rotForward = vec3.rotateAroundAxis(camBaseForward, this.gravityNormal, -this.camera[2]);
+      moveDir = [
+        od0 * rotRight[0] + od2 * rotForward[0],
+        od0 * rotRight[1] + od2 * rotForward[1],
+        od0 * rotRight[2] + od2 * rotForward[2]
+      ];
+
+      let rightDir2 = vec3.normalize(vec3.cross(this.forwardDir, this.gravityNormal));
+      let moveLR =  vec3.dot(moveDir, rightDir2);
+      let moveFB =  vec3.dot(moveDir, this.forwardDir);
+
+      if (!this.grounded) {moveFB *= 0.25;}
+    
+      this.relVel[0] -= moveLR * 0.05;
+      this.relVel[2] += moveFB * 0.05;
+    }
+  }
+  /*if (this.grounded) {
+      this.relVel[2] = constrain(Math.abs(moveDir[0]) + Math.abs(moveDir[2]), 0, 1) / 2;
+  }*/
+
+this.vel.x = this.relVel[0] * rightDir[0] + 
+             this.relVel[2] * this.forwardDir[0] + 
+             this.relVel[1] * this.gravityNormal[0];
+             
+this.vel.y = this.relVel[0] * rightDir[1] + 
+             this.relVel[2] * this.forwardDir[1] + 
+             this.relVel[1] * this.gravityNormal[1];
+             
+this.vel.z = this.relVel[0] * rightDir[2] + 
+             this.relVel[2] * this.forwardDir[2] + 
+             this.relVel[1] * this.gravityNormal[2];
+
+if (this.grounded) {this.lastForwardDir = [this.forwardDir[0],this.forwardDir[1],this.forwardDir[2]];}
+
+  //collisions
+  this.grounded = false;
+  let totalDistanceVec = [this.vel.x + this.carryVec[0], this.vel.y + this.carryVec[1], this.vel.z + this.carryVec[2]];
+  let totalDistance = Math.sqrt(totalDistanceVec[0] * totalDistanceVec[0] + totalDistanceVec[1] * totalDistanceVec[1] + totalDistanceVec[2] * totalDistanceVec[2]);
+  let maxStepDist = Math.max(0.01, this.radius - 0.05);
+  let numSteps = Math.ceil(totalDistance / maxStepDist);
+  let prevCarryMatrices = {};
+  for (let j in this.carryMatrices) {
+    prevCarryMatrices[j] = [];
+    for (let i = 0; i < 16; i++) {prevCarryMatrices[j].push(this.carryMatrices[j][i]);}
+  }
+  this.carryMatrices = {};
+  
+  //console.log(this.vel);
+  let collided = false;
+  for (let s = 0; s < numSteps; s++) {
+    this.ppos.x = this.pos.x;
+    this.ppos.y = this.pos.y;
+    this.ppos.z = this.pos.z;
+  
+    this.pos.x += (this.vel.x + this.carryVec[0]) / numSteps;
+    this.pos.y += (this.vel.y + this.carryVec[1]) / numSteps;
+    this.pos.z += (this.vel.z + this.carryVec[2]) / numSteps;
+
+    for (let i = 0; i < 3; i++) {
+      let lePpos = [this.pos.x, this.pos.y, this.pos.z];
+      meshCollisions(this, scene.objs); 
+      collided = collided || lePpos[0] != this.pos.x || lePpos[1] != this.pos.y || lePpos[2] != this.pos.z;
+    }
+    //console.log(this.timer + ", " + this.carryMatrix);
+  }
+
+  let rcast = raycastModels(scene.objs, [this.pos.x, this.pos.y, this.pos.z], vec3.invert(this.gravityNormal), this.radius + Math.abs(this.relVel[0]) + Math.abs(this.relVel[2]) + 0.1);
+  let prevGrounded = this.grounded;
+  //console.log(rcast);
+  if (rcast && this.relVel[1] <= 0 && this.relVel[1] >= -0.01) {
+    //rcast.normal = vec3.normalize(rcast.normal)
+
+
+    if (!collided) {
+      for (let s = 0; s < 1; s++) {
+        this.ppos.x = this.pos.x;
+        this.ppos.y = this.pos.y;
+        this.ppos.z = this.pos.z;
+      
+        this.pos.x -= (rcast.distance - this.radius) * this.gravityNormal[0];
+        this.pos.y -= (rcast.distance - this.radius) * this.gravityNormal[1];
+        this.pos.z -= (rcast.distance - this.radius) * this.gravityNormal[2];
+    
+        for (let i = 0; i < 3; i++) {
+          //let lePpos = [this.pos.x, this.pos.y, this.pos.z];
+          meshCollisions(this, scene.objs); 
+          //collided = collided || lePpos[0] != this.pos.x || lePpos[1] != this.pos.y || lePpos[2] != this.pos.z;
+        }
+        //console.log(this.timer + ", " + this.carryMatrix);
+      }
+      //console.log(rcast.normal);
+      //this.pos.x -= (rcast.distance - this.radius) * rcast.normal[0];// * this.gravityNormal[0];
+      //this.pos.y -= (rcast.distance - this.radius) * rcast.normal[1];// * this.gravityNormal[1];
+      //this.pos.z -= (rcast.distance - this.radius) * rcast.normal[2];// * this.gravityNormal[2];
+    }
+    
+    this.grounded = true;
+    this.longJumping = false;
+    if (!prevGrounded && this.relVel[2] < 0) {this.relVel[2] = 0;}
+    if (!prevGrounded) {
+      this.spinTimer = 0;
+    }
+    this.relVel[1] = 0;
+    //console.log("rcast: " + rcast.objId);
+    this.carryMatrices[rcast.objId] = rcast.matrix;
+  }
+  
+
+  this.carryVec = [0,0,0];
+  for (let j in this.carryMatrices) {
+    if (!prevCarryMatrices[j]) {continue;}
+    let i = 0;
+    for (i = 0; i < 16; i++) {
+      if (this.carryMatrices[j][i] != prevCarryMatrices[j][i]) {
+        //console.log("moving platform!");
+        i = 20;
+      }
+    }
+    if (i >= 20) {
+      const invMatrix = m4.inverse(this.carryMatrices[j]);
+      const normalMatrix = m4.transpose(invMatrix);
+      //player global to model local
+      let worldPos = [this.pos.x, this.pos.y, this.pos.z];
+      let localPos = m4.transformPoint(invMatrix, worldPos);
+      
+      const invPrev = m4.inverse(prevCarryMatrices[j]);
+      const deltaMatrix = m4.multiply(this.carryMatrices[j], invPrev);
+      
+      // Apply delta to player's world position
+      let newWorldPos = m4.transformPoint(deltaMatrix, worldPos);
+      
+      this.carryVec[0] += newWorldPos[0] - this.pos.x;
+      this.carryVec[1] += newWorldPos[1] - this.pos.y;
+      this.carryVec[2] += newWorldPos[2] - this.pos.z;
+      
+      
+      //console.log(this.carryMatrix);
+      
+      let carryMatrixVec = [this.carryMatrices[j][12], this.carryMatrices[j][13], this.carryMatrices[j][14]];
+      //console.log(carryMatrixVec/*vec3.subtract(carryMatrixVec, this.pos)*/);
+      //let localCarryMatrixVec = [localPos[12], localPos[13], localPos[14]];
+      //console.log(localPos);
+      
+      /*let newMatrix = m4.subtract(this.carryMatrices[j], prevCarryMatrices[j]);
+      console.log(newMatrix);
+      let multVec = [this.pos[0], this.pos[1], this.pos[2], 1];
+      let newVec = m4.vectorMultiply(multVec, newMatrix);*/
+      //Not working. Probably some world space v local space stuff
+      /*this.pos[0] += newVec[0];
+      this.pos[1] += newVec[1];
+      this.pos[2] += newVec[2];*/
+      //this.pos = vec3.multiply(this.pos, newVec);
+      //console.log(newVec);
+    }
+  }
+
+  
+
+  this.animFactor = this.relVel[2] / 0.35;
+};
+
+
+
+mrCube.prototype.draw = function() {
+
+  updateBone(mrCubeModel, 0, 0, 0, 0, 0, 0);
+  if (this.grounded) {
+    if (!this.crouching) {
+      updateBone(mrCubeModel, 0, 0, (this.animFactor)  * Math.abs(Math.sin(degToRad(timer * 15))) * 0.2, 0, 0, 0);
+      updateBone(mrCubeModel, 2, 0, 0, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 3, 0, 0, 0, 0, (this.animFactor) * 70 * Math.sin(degToRad(timer * 15)), 0);
+      updateBone(mrCubeModel, 4, 0, 0, 0, 0, (this.animFactor) * 70 * Math.sin(degToRad(timer * 15)), 0);
+      updateBone(mrCubeModel, 5, 0, 0, 0, (this.animFactor) * 50 * Math.sin(degToRad(timer * 15)), 0, 0);
+      updateBone(mrCubeModel, 6, 0, 0, 0, (this.animFactor) * -50 * Math.sin(degToRad(timer * 15)), 0, 0);
+    } else {
+      updateBone(mrCubeModel, 1, 0, -0.5, 0.0, 0, 0);
+      updateBone(mrCubeModel, 2, 0, 0, 0.2, 45, 0, 0);
+      updateBone(mrCubeModel, 3, 0.2, 0, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 4, -0.2, 0, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 5, 0.05, 0.5, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 6, -0.05, 0.5, 0, 0, 0, 0);
+    }
+  } else {
+      updateBone(mrCubeModel, 2, 0, 0, 0, 0, 0, 0);
+    if (this.spinTimer <= 0 && !this.longJumping && !this.onWall) {
+      updateBone(mrCubeModel, 0, 0, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 3 + this.raisedSide, 0, -0.2, -0.5, 0, 0, 0);
+      updateBone(mrCubeModel, 4 - this.raisedSide, 0, 0.5, 0.5, 0, 0, 0);
+      updateBone(mrCubeModel, 5, 0, 0, 0, 50 - 100*this.raisedSide, 0, 0);
+      updateBone(mrCubeModel, 6, 0, 0, 0, -50 + 100*this.raisedSide, 0, 0);
+    } else if (!this.longJumping && this.spinTimer > 0) {
+      updateBone(mrCubeModel, 0, 0, 0, 0, 0, 360 - (36*(30 - this.spinTimer)));
+      updateBone(mrCubeModel, 3, -0.25, 0.1 - this.relVel[1] / 4, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 4, 0.25, 0.1- this.relVel[1] / 4, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 5, 0.3, 0, 0, 0, 0, 45 - this.relVel[1] * 5);
+      updateBone(mrCubeModel, 6, -0.3, 0, 0, 0, 0, -45 + this.relVel[1] * 5);
+    } else if (this.longJumping) {
+      updateBone(mrCubeModel, 1, 0, 0.0, 0.0, 0, 0);
+      updateBone(mrCubeModel, 2, 0, 0, -0.1, -45 * constrain(this.relVel[1] * 2, -1, 1), 0, 0);
+      updateBone(mrCubeModel, 3, -0.01, 0.1, -1.0, 0, 0, 0);
+      updateBone(mrCubeModel, 4, 0.01, 0.1, -1.0, 0, 0, 0);
+      updateBone(mrCubeModel, 5, -0.05, 0.3, 0.5, 0, 0, 0);
+      updateBone(mrCubeModel, 6, 0.05, 0.3, 0.5, 0, 0, 0);
+    } else if (this.onWall) {
+      updateBone(mrCubeModel, 0, 0, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 3 + this.raisedSide, 0, -0.3, -0.6, 0, 0, 0);
+      updateBone(mrCubeModel, 4 - this.raisedSide, 0, -0.1, 0.2, 0, 0, 0);
+      updateBone(mrCubeModel, 5, -0.1, 0, -0.6, 0, 0, 0);
+      updateBone(mrCubeModel, 6, 0.1, 0, -0.45, 0, 0, 0);
+    }
+  }
+
+
+  //Render Player Model
+  let rightVec = vec3.normalize(vec3.cross(this.gravityNormal, this.forwardDir));
+  let forwardVec = vec3.normalize(vec3.cross(rightVec, this.gravityNormal));
+  let upVec = this.gravityNormal;
+
+  let m = [
+    rightVec[0],   rightVec[1],   rightVec[2],   0,
+    upVec[0],      upVec[1],      upVec[2],      0,
+    forwardVec[0], forwardVec[1], forwardVec[2], 0,
+    this.pos[0],   this.pos[1],   this.pos[2],   1 
+  ];
+  mrCubeModel.prep(planeTexture, false);
+  gl.uniform1f(getShaderVar("u_excludeProjector"), 1.0);
+  mrCubeModel.draw(m, drawMode ? gl.TRIANGLES : gl.LINE_STRIP);
+  gl.uniform1f(getShaderVar("u_excludeProjector"), -1.0);
+
+
+  //Position and rotate camera
+  rightVec = vec3.normalize(vec3.cross(this.gravityNormal, this.forwardNormal));
+  forwardVec = vec3.normalize(vec3.cross(rightVec, this.gravityNormal));
+  upVec = this.gravityNormal;
+      
+  let r = this.camera[0];
+  let pitch = -this.camera[1];
+  let yaw = 0;//this.camera[2];
+
+  // Build camera offset in LOCAL space (relative to character)
+  // Start with the character's "back" direction
+  let cameraDir = [-forwardVec[0], -forwardVec[1], -forwardVec[2]];
+  cameraDir = vec3.rotateAroundAxis(cameraDir, this.gravityNormal, -this.camera[2]);
+    
+  // Apply yaw rotation around the character's up vector (gravityNormal)
+  const yawQ = Quaternion.fromAxisAngle(upVec, yaw);
+  cameraDir = yawQ.rotateVector(cameraDir);
+    
+  // Get the right vector for pitch rotation
+  let camRight = vec3.normalize(vec3.cross(upVec, cameraDir));
+    
+  // Apply pitch rotation around the right vector
+  const pitchQ = Quaternion.fromAxisAngle(camRight, pitch);
+  cameraDir = pitchQ.rotateVector(cameraDir);
+    
+  // Position camera
+  let targetCamPos = [0,0,0, 0,0,0];
+  camPos[0];targetCamPos[0] = this.pos.x + cameraDir[0] * r;
+  camPos[1];targetCamPos[1] = this.pos.y + cameraDir[1] * r;
+  camPos[2];targetCamPos[2] = this.pos.z + cameraDir[2] * r;
+    
+  // Calculate camera orientation (looking at player)
+  let lookDir = vec3.normalize([
+    this.pos.x - targetCamPos[0],
+    this.pos.y - targetCamPos[1],
+    this.pos.z - targetCamPos[2]
+  ]);
+    
+  // Build camera's up vector (should align with character's up)
+  let finalCamRight = yawQ.rotateVector(camRight);
+  let finalCamUp = vec3.normalize(vec3.cross(finalCamRight, lookDir));
+    
+  // Convert to Euler angles for rendering (more stable now)
+  camPos[3];targetCamPos[3] = Math.asin(-lookDir[1]) * 180 / Math.PI; // pitch
+  camPos[4];targetCamPos[4] = (-Math.atan2(lookDir[0], lookDir[2])) * 180 / Math.PI; // yaw
+    
+  // Calculate roll to keep camera upright relative to character
+  // Project character's up onto camera's view plane
+  let camUpProjected = vec3.normalize(vec3.subtract(
+    finalCamUp,
+    vec3.scale(lookDir, vec3.dot(finalCamUp, lookDir))
+  ));
+    
+  // Calculate roll angle
+  let defaultUp = [0, 1, 0];
+  let rollDot = vec3.dot(camUpProjected, defaultUp);
+  let rollCross = vec3.cross(camUpProjected, defaultUp);
+  camPos[5];targetCamPos[5] = Math.atan2(vec3.dot(rollCross, lookDir), rollDot) * 180 / Math.PI;
+
+  for (let i = 0; i < 6; i++) {
+    let b = targetCamPos[i];
+    let a = camPos[i];
+    //console.log(a + ", " + b);
+    //a = b;//Math.abs(b - a) * Math.sign(b - a);
+    camPos[i] += Math.abs(b - a) * Math.sign(b - a) / 1;//targetCamPos[i];
+    //camPos[i + 3] = targetCamPos[i];
+  }
+}

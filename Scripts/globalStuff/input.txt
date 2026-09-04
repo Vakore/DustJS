@@ -1,0 +1,132 @@
+var keys = {};
+var keysDown = {};
+
+var Akeys = {};
+var AkeysDown = {};
+document.addEventListener("keydown",function(e) {
+    e.preventDefault();
+    if (!keys[e.keyCode]) {
+        keysDown[e.keyCode] = true;
+    } else {
+        keysDown[e.keyCode] = false;
+    }
+    keys[e.keyCode] = true;
+    if (!Akeys[e.keyCode]) {
+        AkeysDown[e.keyCode] = true;
+    } else {
+        AkeysDown[e.keyCode] = false;
+    }
+    Akeys[e.keyCode] = true;
+    controllerType = 0;
+});
+
+document.addEventListener("keyup",function(e) {
+  e.preventDefault();
+  keysDown[e.keyCode] = false;
+  keys[e.keyCode] = false;
+  AkeysDown[e.keyCode] = false;
+  Akeys[e.keyCode] = false;
+});
+
+
+let mouseX = 0;
+let mouseY = 0;
+let mouseX2 = 0;
+let mouseY2 = 0;
+document.addEventListener("mousemove", (e) => {
+  let mPos = getMousePos(document.getElementById("canvas"), e);
+  mouseX = mPos.x;
+  mouseY = mPos.y;
+  let mPos2 = getMousePos(document.getElementById("buf"), e);
+  mouseX2 = mPos2.x;
+  mouseY2 = mPos2.y;
+});
+
+let clicked = false;
+document.addEventListener("mouseclick", (e) => {
+  clicked = true;
+});
+
+function clickTrue() {
+  clicked = true;
+}
+  
+function getMousePos(ctx, e) {
+  let rect = ctx.getBoundingClientRect();
+  let scaleX = ctx.width / rect.width;
+  let scaleY = ctx.height / rect.height; 
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY,
+    w: ctx.width,
+    h: ctx.height
+  };
+};
+
+
+let gamepadButtonNames = ["A","B","X","Y","LB","RB","LT","RT","SELECT","START","","","UP","DOWN","LEFT","RIGHT"];
+let gamepads = [];
+let buttons = [[],[],[],[],[],[],[],[]];
+window.addEventListener("gamepadconnected", function(e) {
+    gamepads[e.gamepad.index] = e.gamepad;
+});
+window.addEventListener("gamepaddisconnected", function(e) {
+    gamepads[e.gamepad.index] = undefined;
+});
+
+let controllers = [];
+
+
+//https://codepen.io/siddv/pen/wEdewG?__cf_chl_captcha_tk__=7bgLP3S42jmKqqVdHxBXQNbVzXWX9oWDILdVb0tx_Jg-1636301187-0-gaNycGzNB9E
+//Where I found how to make the controller vibrate.
+function vibrateGamepad(j, duration, magnitude) {
+  if (/*_settings.controllerVibration*/ true) {
+    //for (var j = 0; j < gamepads.length; j++) {
+        if (gamepads[j] == undefined) {return;}//{continue;}
+        gamepads[j] = navigator.getGamepads()[j];
+        if (gamepads[j] == undefined) {return;}//{continue;}
+        let gamepad = gamepads[j];
+        if (gamepad && gamepad.vibrationActuator && gamepad.vibrationActuator.playEffect) {
+            gamepad.vibrationActuator.playEffect('dual-rumble', {
+                duration: duration,
+                strongMagnitude: magnitude/100,
+                weakMagnitude: magnitude/100
+            });
+        }
+    //}
+  }
+};
+
+function gamepadInput() {
+  for (let j = 0; j < gamepads.length; j++) {
+    if (gamepads[j] == undefined) {continue;}
+    gamepads[j] = navigator.getGamepads()[j];
+    if (gamepads[j] == undefined) {continue;}
+    let gamepad = gamepads[j];
+    if (controllers[j] == undefined) {
+      controllers[j] = {
+        keys:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        keysDown:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        axes:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      };
+    }
+    
+        
+    for (let i = 0; i < gamepad.buttons.length; i++) {
+      controllers[j].keysDown[i] = 0;
+      let b = controllers[j].keys[i];
+      controllers[j].keys[i] = gamepad.buttons[i].pressed;
+      if (b != controllers[j].keys[i]) {
+        //not keydown handling
+      }
+      if (!b && controllers[j].keys[i]) {
+        //keydown handling
+        controllers[j].keysDown[i] = 1;
+      }
+    }
+        
+    for (let i = 0; i < gamepad.axes.length; i++) {
+      controllers[j].axes[i] = ( (Math.abs(gamepad.axes[i]) > 0.15) ? (gamepad.axes[i]) : 0);
+    }
+  }
+};

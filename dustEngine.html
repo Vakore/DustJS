@@ -1,0 +1,169 @@
+<html>
+<style>
+.center {
+  text-align:center;
+}
+</style>
+  
+<div class = "center">
+  <canvas width = "910" height = "512" id = "canvas" onclick="clickTrue()"></canvas><br>
+  <canvas style = "display: none" width = "910" height = "512" id = "buf" onclick="clickTrue()"></canvas><br>
+  <canvas width = "64" height = "64"></canvas>
+</div>
+
+<!--script src = "Scripts/genTextures.txt"></script-->
+
+<script id="vertex-shader-3d" type="x-shader/x-vertex">
+attribute vec4 a_position;
+attribute vec2 a_texcoord;
+attribute vec4 a_color;
+attribute vec3 a_normal;
+attribute vec4 a_boneIDs;
+attribute vec4 a_boneWeights;
+  
+uniform mat4 u_boneTransforms[100];
+uniform mat4 u_view;
+uniform mat4 u_projection;
+uniform mat4 u_modelPos;
+uniform mat4 u_textureMatrix; 
+uniform mat3 u_normalMatrix; 
+
+
+varying vec4 v_color;
+varying vec3 v_normal;
+varying vec2 v_texcoord;
+varying vec3 v_worldPos;
+varying vec3 v_viewPos;
+varying mat3 v_TBN;//TBN matrix for normal mapping
+varying vec4 v_projectedTexcoord;
+
+
+void main() {
+  mat4 boneTransform = mat4(1.0, 0.0, 0.0, 0.0,
+                            0.0, 1.0, 0.0, 0.0,
+                            0.0, 0.0, 1.0, 0.0,
+                            0.0, 0.0, 0.0, 1.0);
+ 
+  if(a_boneWeights[0] > 0.0) {
+      boneTransform = u_boneTransforms[int(a_boneIDs[0])] * a_boneWeights[0];
+      boneTransform += u_boneTransforms[int(a_boneIDs[1])] * a_boneWeights[1];
+      boneTransform += u_boneTransforms[int(a_boneIDs[2])] * a_boneWeights[2];
+      boneTransform += u_boneTransforms[int(a_boneIDs[3])] * a_boneWeights[3];
+  }
+  
+  vec4 skinnedPos = boneTransform * a_position;
+  vec4 worldPos = u_modelPos * skinnedPos;
+  vec4 viewPos = u_view * worldPos;
+  gl_Position = u_projection * viewPos;
+
+  v_worldPos = worldPos.xyz;
+  v_viewPos = viewPos.xyz;
+  v_color = a_color;
+  v_texcoord = a_texcoord;
+  v_projectedTexcoord = u_textureMatrix * worldPos;
+
+  
+  //TBN matrix for normal mapping
+  //vec3 normal = normalize((u_modelPos * boneTransform * vec4(a_normal, 0.0)).xyz);
+  
+  
+
+  mat3 normalMat = u_normalMatrix * mat3(boneTransform);
+  vec3 worldNormal = normalMat * a_normal;
+  vec3 normal = normalize(worldNormal);
+  v_normal = normal;
+  //v_normal = normal;
+
+  //tangent calculation (assuming texture is mapped in a standard way)
+  vec3 c1 = cross(normal, vec3(0.0, 0.0, 1.0));
+  vec3 c2 = cross(normal, vec3(0.0, 1.0, 0.0));
+  vec3 tangent = length(c1) > length(c2) ? c1 : c2;
+  tangent = normalize(tangent);
+  vec3 bitangent = normalize(cross(normal, tangent));
+  v_TBN = mat3(tangent, bitangent, normal);
+}
+</script>
+<!-- fragment shader -->
+<script  id="fragment-shader-3d" type="x-shader/x-fragment">
+precision mediump float;
+
+uniform vec3 u_reverseLightDirection;
+uniform sampler2D u_texture;
+uniform sampler2D u_normalMap;
+uniform vec4 u_fogColor;
+uniform float u_useTexture;
+uniform float u_useNormalMap;
+uniform sampler2D u_projectedTexture;
+uniform float u_excludeProjector;
+uniform vec3 u_projectorPosition;
+uniform vec3 u_projectorDir;
+
+varying vec4 v_color;
+varying vec3 v_normal;
+varying vec3 v_viewPos;
+varying vec3 v_worldPos;
+varying vec2 v_texcoord;
+varying mat3 v_TBN;
+varying vec4 v_projectedTexcoord;
+
+  
+void main() {
+  vec3 normal;
+  
+  if (u_useNormalMap > 0.5) {
+    // Sample normal map
+    /*vec3 normalMap = texture2D(u_normalMap, v_texcoord).rgb;
+    // Convert from [0, 1] to [-1, 1]
+    normalMap = normalMap * 2.0 - 1.0;
+    // Transform to world space using TBN matrix
+    normal = normalize(v_TBN * normalMap);*/
+    normal = normalize(v_normal);
+  } else {
+    normal = normalize(v_normal);
+  }
+
+  vec3 projectedTexcoord = v_projectedTexcoord.xyz / v_projectedTexcoord.w;
+ 
+  bool inRange = 
+      projectedTexcoord.x >= -0.5 &&
+      projectedTexcoord.x <= 0.5 &&
+      projectedTexcoord.y >= -0.5 &&
+      projectedTexcoord.y <= 0.5 &&
+      projectedTexcoord.z >= -1.0 &&
+      projectedTexcoord.z <= 0.0;
+  projectedTexcoord.x += 0.5;
+  projectedTexcoord.y += 0.5;
+ 
+  vec4 projectedTexColor = texture2D(u_projectedTexture, projectedTexcoord.xy);
+
+  float projectedAmount = inRange ? 1.0 : 0.0;
+  if (u_excludeProjector == 1.0) {
+      projectedAmount = 0.0;
+  } else {
+    float facing = dot(normalize(normal), normalize(u_projectorDir));
+    if (facing >= -0.001) {
+      projectedAmount = 0.0;
+    }
+  }
+
+  vec4 texRgba = texture2D(u_texture, v_texcoord);
+  vec3 baseColor = mix(v_color.rgb, texRgba.rgb, u_useTexture);
+  //vec3 baseColor = normalize(v_normal).rgb * 0.5 + 0.5;
+  
+  baseColor = mix(baseColor, projectedTexColor.rgb, projectedAmount * projectedTexColor.a);
+  
+  float light = 0.5 + (max(dot(normal, u_reverseLightDirection), 0.0) / 2.0);
+  baseColor *= light;
+  
+  float fogDistance = length(v_viewPos);
+  float fogAmount = smoothstep(100.0, 1000.0, fogDistance);
+  
+  gl_FragColor.rgb = mix(baseColor, u_fogColor.rgb, fogAmount);
+  gl_FragColor.a = 1.0;
+  //gl_FragColor.rgb = normalize(v_normal) * 0.5 + 0.5;
+}
+</script>
+
+<script src = "Scripts/initDustEngine.txt"></script>
+
+</html>

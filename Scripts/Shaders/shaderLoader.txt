@@ -1,0 +1,76 @@
+//This is a portion of code from here:
+//https://webglfundamentals.org/webgl/resources/webgl-utils.js
+
+/*
+ * Copyright 2021 GFXFundamentals.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above
+ * copyright notice, this list of conditions and the following disclaimer
+ * in the documentation and/or other materials provided with the
+ * distribution.
+ *     * Neither the name of GFXFundamentals. nor the names of his
+ * contributors may be used to endorse or promote products derived from
+ * this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+function loadShader(gl, shaderSource, shaderType) {
+  const shader = gl.createShader(shaderType);
+  gl.shaderSource(shader, shaderSource);
+  gl.compileShader(shader);
+
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    alert("Failed to compile shader.");
+    return null;
+  }
+
+  return shader;
+}
+
+  
+function createShaderFromScript(gl, scriptId, shaderType) {
+    let shaderSource = '';
+    const shaderScript = document.getElementById(scriptId);
+    if (!shaderScript) {
+      alert ('*** Error: unknown script element' + scriptId);
+    }
+    shaderSource = shaderScript.text;
+
+    return loadShader(gl, shaderSource, shaderType);
+}
+  
+function createProgramFromScripts(gl, shaderScriptIds) {
+  const shaders = [];
+  for (let i = 0; i < shaderScriptIds.length; ++i) {
+    shaders.push(createShaderFromScript(gl, shaderScriptIds[i], gl[['VERTEX_SHADER', 'FRAGMENT_SHADER'][i]]));
+  }
+  
+  const program = gl.createProgram();
+  shaders.forEach(function(shader) {
+    gl.attachShader(program, shader);
+  });
+  gl.linkProgram(program);
+
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    alert("linking error");
+    return null;
+  }
+  return program;
+}

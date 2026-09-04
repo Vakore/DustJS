@@ -1,0 +1,888 @@
+"use strict"
+var canvas = document.querySelector("#canvas");
+var gl = canvas.getContext("webgl", { antialias: !false });
+let program = createProgramFromScripts(gl, ["vertex-shader-3d", "fragment-shader-3d"]);
+
+let attributeLocations = {};
+let programs = [program];
+function getShaderVar(str, programID = 0) {
+  let leStr = programID + str;
+  if (attributeLocations[leStr] == null) {
+    if (str[0] == "a") {
+      attributeLocations[leStr] = gl.getAttribLocation(program, str);
+    } else if (str[0] == "u") {
+      attributeLocations[leStr] = gl.getUniformLocation(program, str);
+    }
+  }
+  return attributeLocations[leStr];
+}
+
+//attributes
+//let positionLocation = gl.getAttribLocation(program, "a_position");
+let positionLocation = getShaderVar("a_position");
+let texcoordLocation = getShaderVar("a_texcoord");
+let colorLocation = getShaderVar("a_color");
+let normalLocation = getShaderVar("a_normal");
+let boneIDLocation = getShaderVar("a_boneIDs");
+let boneWeightLocation = getShaderVar("a_boneWeights");
+
+//uniforms
+let modelPosLocation = getShaderVar("u_modelPos");
+let reverseLightDirectionLocation = getShaderVar("u_reverseLightDirection");
+let fogColorLocation = getShaderVar("u_fogColor");
+let viewLocation = getShaderVar("u_view");
+let projectionLocation = getShaderVar("u_projection");
+let boneTransformsLocation = getShaderVar("u_boneTransforms");
+let useTextureLocation = getShaderVar("u_useTexture");
+let normalMapLocation = getShaderVar("u_normalMap");
+let useNormalMapLocation = getShaderVar("u_useNormalMap");
+
+
+gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+gl.scissor(0, 0, gl.canvas.width, gl.canvas.height);
+
+//gl.viewport(0, gl.canvas.height / 2, gl.canvas.width / 2, gl.canvas.height / 2);
+//gl.scissor(0, gl.canvas.height / 2, gl.canvas.width / 2, gl.canvas.height / 2);
+gl.enable(gl.CULL_FACE);
+gl.enable(gl.DEPTH_TEST);
+  
+let positionBuffer = gl.createBuffer();
+let colorBuffer = gl.createBuffer();
+let normalBuffer = gl.createBuffer();
+let boneIDBuffer = gl.createBuffer();
+let boneWeightBuffer = gl.createBuffer();
+let indexBuffer = gl.createBuffer();
+let textureBuffer = gl.createBuffer();
+
+
+
+//
+let brickTexture = {
+  img:gl.createTexture(),
+  normal:gl.createTexture()
+};
+gl.bindTexture(gl.TEXTURE_2D, brickTexture.img);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+              new Uint8Array([0, 0, 255, 255]));//1x1 blue
+gl.bindTexture(gl.TEXTURE_2D, brickTexture.img);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA,gl.UNSIGNED_BYTE, document.getElementById("bricks"));
+//gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);//no blur
+//gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);//no blur
+gl.generateMipmap(gl.TEXTURE_2D);
+
+gl.bindTexture(gl.TEXTURE_2D, brickTexture.normal);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+              new Uint8Array([128, 128, 255, 255])); // Default flat normal
+
+// After normal map is generated (after generateNormalMap call):
+gl.bindTexture(gl.TEXTURE_2D, brickTexture.normal);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, 
+              document.getElementById("bricks_normal"));
+//gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+//gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+gl.generateMipmap(gl.TEXTURE_2D);
+
+
+
+let planeTexture = {
+  img:gl.createTexture(),
+  normal:gl.createTexture()
+};
+gl.bindTexture(gl.TEXTURE_2D, planeTexture.img);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+              new Uint8Array([0, 0, 255, 255]));//1x1 blue
+gl.bindTexture(gl.TEXTURE_2D, planeTexture.img);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA,gl.UNSIGNED_BYTE, document.getElementById("checkers"));
+//gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);//no blur
+//gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);//no blur
+gl.generateMipmap(gl.TEXTURE_2D);
+
+
+gl.bindTexture(gl.TEXTURE_2D, planeTexture.normal);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+              new Uint8Array([128, 128, 255, 255])); // Default flat normal
+
+// After normal map is generated (after generateNormalMap call):
+gl.bindTexture(gl.TEXTURE_2D, planeTexture.normal);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, 
+              document.getElementById("checkers_normal"));
+//
+
+
+////
+let projTexture = {
+  img:gl.createTexture(),
+  normal:gl.createTexture()
+};
+gl.bindTexture(gl.TEXTURE_2D, projTexture.img);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+              new Uint8Array([0, 0, 255, 255]));//1x1 blue
+gl.bindTexture(gl.TEXTURE_2D, projTexture.img);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA,gl.UNSIGNED_BYTE, document.getElementById("orange"));
+//gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);//no blur
+//gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);//no blur
+gl.generateMipmap(gl.TEXTURE_2D);
+
+
+gl.bindTexture(gl.TEXTURE_2D, projTexture.normal);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+              new Uint8Array([128, 128, 255, 255])); // Default flat normal
+
+// After normal map is generated (after generateNormalMap call):
+gl.bindTexture(gl.TEXTURE_2D, projTexture.normal);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, 
+              document.getElementById("orange_normal"));
+////
+
+
+
+var aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+
+
+let camPos = [0, -8, 0, 0, 180, 0];
+camPos = [0,15,-10,45,0,0];
+let cameraMatrix = m4.translation(camPos[0], camPos[1], camPos[2]);
+let fieldOfViewRadians = degToRad(_settings.FOV);
+let timer = 0;
+let drawMode = 1;
+function constrain(num, min, max) {
+  return num < min ? min : (num > max ? max : num);
+}
+
+  
+let backgroundColor = [1, 0.5, 0.5, 1.0];
+backgroundColor = [0.0, 0.5, 1.0, 1.0];
+  
+let camSpeed = 0.1;
+let moveDirs = [0, 0];//x, z
+let camDir = [0, 0, -1];
+
+function raycastModels(objs, rayOrigin, rayDirection, maxDistance = Infinity) {
+  let closestHit = null;
+  for (let i = 0; i < objs.length; i++) {
+    let thisHit = raycastModel(objs[i].model, objs[i].matrix, objs[i].scaleFactor, rayOrigin, rayDirection, maxDistance);
+    if (!closestHit || thisHit != null && thisHit.distance <= closestHit.distance) {
+      closestHit = thisHit;
+    }
+  }
+  return closestHit;
+}
+
+function raycastModel(model, worldMatrix, scaler, rayOriginWorld, rayDirectionWorld, maxDistance = Infinity) {
+    rayDirectionWorld = vec3.normalize(rayDirectionWorld);
+    
+    const verts = model.verts;
+    const tris = model.tris;
+    
+    let closestHit = null;
+    let closestDistSq = maxDistance * maxDistance;
+    
+    const invMatrix = m4.inverse(worldMatrix);
+    let rayOriginLocal = m4.transformPoint(invMatrix, rayOriginWorld);
+    let rayDirectionLocal = m4.transformDirection(invMatrix, rayDirectionWorld);
+    
+    const dirLen = vec3.length(rayDirectionLocal);
+    const rayDirectionLocalNormalized = vec3.normalize(rayDirectionLocal);
+    const maxDistanceLocal = maxDistance * dirLen;
+
+    for (let i = 0; i < tris.length; i += 3) {
+        const idxA = tris[i] * 3;
+        const idxB = tris[i + 1] * 3;
+        const idxC = tris[i + 2] * 3;
+        
+        const v0 = [verts[idxA], verts[idxA+1], verts[idxA+2]];
+        const v1 = [verts[idxB], verts[idxB+1], verts[idxB+2]];
+        const v2 = [verts[idxC], verts[idxC+1], verts[idxC+2]];
+        
+        // Moller–Trumbore ray-triangle intersection
+        const edge1 = vec3.subtract(v1, v0);
+        const edge2 = vec3.subtract(v2, v0);
+        const h = vec3.cross(rayDirectionLocalNormalized, edge2);
+        const a = vec3.dot(edge1, h);
+        
+        // Parallel check (avoid division by zero)
+        if (Math.abs(a) < 0.000001) continue;
+        
+        const f = 1.0 / a;
+        const s = vec3.subtract(rayOriginLocal, v0);
+        const u = f * vec3.dot(s, h);
+        if (u < 0.0 || u > 1.0) continue;
+        
+        const q = vec3.cross(s, edge1);
+        const v = f * vec3.dot(rayDirectionLocalNormalized, q);
+        if (v < 0.0 || u + v > 1.0) continue;
+        
+        const tLocal = f * vec3.dot(edge2, q); // distance in local space along normalized ray
+        if (tLocal <= 0.000001 || tLocal >= maxDistanceLocal) continue;
+        
+        // Convert local distance to world distance
+        const tWorld = tLocal / dirLen;
+        
+        if (tWorld < Math.sqrt(closestDistSq)) {
+            closestDistSq = tWorld * tWorld;
+            
+            const localHitPoint = vec3.add(rayOriginLocal, vec3.scale(rayDirectionLocalNormalized, tLocal));
+            
+            // Compute triangle normal (assuming counter-clockwise winding)
+            let localNormal = vec3.cross(edge1, edge2);
+            localNormal = vec3.normalize(localNormal);
+            
+            const worldHitPoint = m4.transformPoint(worldMatrix, localHitPoint);
+            let worldNormal = m4.transformDirection(worldMatrix, localNormal);
+            worldNormal = vec3.normalize(worldNormal);
+            
+            // Make sure normal points towards ray origin, flip if necessary
+            if (vec3.dot(worldNormal, rayDirectionWorld) > 0) {
+                worldNormal = vec3.scale(worldNormal, -1);
+            }
+            
+            closestHit = {
+                point: worldHitPoint,
+                distance: tWorld, // Use world distance
+                normal: worldNormal,
+                triangleIndex: i / 3,
+                barycentric: [1 - u - v, u, v]
+            };
+        }
+    }
+    
+    return closestHit;
+}
+/*function raycastModel(model, worldMatrix, scaler, rayOriginWorld, rayDirectionWorld, maxDistance = Infinity) {
+  rayDirectionWorld = vec3.normalize(rayDirectionWorld);
+  const verts = model.verts;
+  const tris = model.tris;
+  let closestHit = null;
+  let closestDistSq = maxDistance * maxDistance;
+  const invMatrix = m4.inverse(worldMatrix);
+  let rayOriginLocal = m4.transformPoint(invMatrix, rayOriginWorld);
+  let rayDirectionLocal = m4.transformDirection(invMatrix, rayDirectionWorld);
+  const dirLen = vec3.length(rayDirectionLocal);
+  const maxDistanceLocal = maxDistance * dirLen;
+  if (scaler > 1.0) {
+    //scaler = 1.0;
+    rayDirectionLocal = vec3.normalize(rayDirectionLocal);
+  }
+  //console.log(rayDirectionLocal + "\n" + rayDirectionWorld);
+  //console.log(rayOriginLocal + "\n" + rayOriginWorld););
+ 
+  for (let i = 0; i < tris.length; i += 3) {
+    const idxA = tris[i] * 3;
+    const idxB = tris[i + 1] * 3;
+    const idxC = tris[i + 2] * 3;
+    const v0 = [verts[idxA], verts[idxA+1], verts[idxA+2]];
+    const v1 = [verts[idxB], verts[idxB+1], verts[idxB+2]];
+    const v2 = [verts[idxC], verts[idxC+1], verts[idxC+2]];
+    //Moller–Trumbore ray-triangle intersection
+    const edge1 = vec3.subtract(v1, v0);
+    const edge2 = vec3.subtract(v2, v0);
+    const h = vec3.cross(rayDirectionLocal, edge2);
+    const a = vec3.dot(edge1, h);
+    //Parallel check (avoid division by zero)
+    if (Math.abs(a) < 0.000001) continue;
+    const f = 1.0 / a;
+    const s = vec3.subtract(rayOriginLocal, v0);
+    //console.log(rayOrigin + ", " + v0 + ", " + s);
+    const u = f * vec3.dot(s, h);
+    if (u < 0.0 || u > 1.0) continue;
+    const q = vec3.cross(s, edge1);
+    const v = f * vec3.dot(rayDirectionLocal, q);
+    if (v < 0.0 || u + v > 1.0) continue;
+    const t = f * vec3.dot(edge2, q); // distance along ray
+    if (t <= 0.000001 || t >= maxDistanceLocal) continue;
+    //if hit
+    const distSq = t * t;
+    if (distSq < closestDistSq) {
+      closestDistSq = distSq;
+      const localHitPoint = vec3.add(rayOriginLocal, vec3.scale(rayDirectionLocal, t));
+      // Compute triangle normal (assuming counter-clockwise winding)
+      let localNormal = vec3.cross(edge1, edge2);
+      localNormal = vec3.normalize(localNormal);
+      const worldHitPoint = m4.transformPoint(worldMatrix, localHitPoint);
+      let worldNormal = m4.transformDirection(worldMatrix, localNormal);
+      worldNormal = vec3.normalize(worldNormal);
+      //make sure normal points towards ray origin, flip if necessary
+      if (vec3.dot(worldNormal, rayDirectionWorld) > 0) {
+        worldNormal = vec3.scale(worldNormal, -1);
+      }
+     
+      closestHit = {
+        point: worldHitPoint,
+        distance: t,
+        normal: worldNormal,
+        triangleIndex: i / 3,
+        barycentric: [1 - u - v, u, v]
+      };
+    }
+  }
+  //if (closestHit != null){console.log(closestHit);}
+  return closestHit;
+}*/
+/*
+function raycastModel(model, worldMatrix, scaler, rayOriginWorld, rayDirectionWorld, maxDistance = Infinity) {
+  rayDirectionWorld = vec3.normalize(rayDirectionWorld);
+  const verts = model.verts;
+  const tris = model.tris;
+  let closestHit = null;
+  let closestDistSq = maxDistance * maxDistance;
+  const invMatrix = m4.inverse(worldMatrix);
+  let rayOriginLocal = m4.transformPoint(invMatrix, rayOriginWorld);
+  let rayDirectionLocal = m4.transformDirection(invMatrix, rayDirectionWorld);
+  const dirLen = vec3.length(rayDirectionLocal);
+  const maxDistanceLocal = maxDistance * dirLen;
+  //rayDirectionLocal = vec3.normalize(rayDirectionLocal);
+  //console.log(rayDirectionLocal + "\n" + rayDirectionWorld);
+  //console.log(rayOriginLocal + "\n" + rayOriginWorld);
+ 
+  for (let i = 0; i < tris.length; i += 3) {
+    const idxA = tris[i] * 3;
+    const idxB = tris[i + 1] * 3;
+    const idxC = tris[i + 2] * 3;
+    const v0 = [verts[idxA], verts[idxA+1], verts[idxA+2]];
+    const v1 = [verts[idxB], verts[idxB+1], verts[idxB+2]];
+    const v2 = [verts[idxC], verts[idxC+1], verts[idxC+2]];
+    //Moller–Trumbore ray-triangle intersection
+    const edge1 = vec3.subtract(v1, v0);
+    const edge2 = vec3.subtract(v2, v0);
+    const h = vec3.cross(rayDirectionLocal, edge2);
+    const a = vec3.dot(edge1, h);
+    //Parallel check (avoid division by zero)
+    if (Math.abs(a) < 0.000001) continue;
+    const f = 1.0 / a;
+    const s = vec3.subtract(rayOriginLocal, v0);
+    //console.log(rayOrigin + ", " + v0 + ", " + s);
+    const u = f * vec3.dot(s, h);
+    if (u < 0.0 || u > 1.0) continue;
+    const q = vec3.cross(s, edge1);
+    const v = f * vec3.dot(rayDirectionLocal, q);
+    if (v < 0.0 || u + v > 1.0) continue;
+    const t = f * vec3.dot(edge2, q); // distance along ray
+    if (t <= 0.000001 || t >= maxDistanceLocal) continue;
+    //if hit
+    const distSq = t * t;
+    if (distSq < closestDistSq) {
+      closestDistSq = distSq;
+      const localHitPoint = vec3.add(rayOriginLocal, vec3.scale(rayDirectionLocal, t));
+      // Compute triangle normal (assuming counter-clockwise winding)
+      let localNormal = vec3.cross(edge1, edge2);
+      localNormal = vec3.normalize(localNormal);
+      const worldHitPoint = m4.transformPoint(worldMatrix, localHitPoint);
+      let worldNormal = m4.transformDirection(worldMatrix, localNormal);
+      worldNormal = vec3.normalize(worldNormal);
+      //make sure normal points towards ray origin, flip if necessary
+      if (vec3.dot(worldNormal, rayDirectionWorld) > 0) {
+        worldNormal = vec3.scale(worldNormal, -1);
+      }
+     
+      closestHit = {
+        point: worldHitPoint,
+        distance: t,
+        normal: worldNormal,
+        triangleIndex: i / 3,
+        barycentric: [1 - u - v, u, v]
+      };
+    }
+  }
+//if (closestHit != null){console.log(closestHit);}
+  return closestHit;
+}
+I think the returned normal is incorrect as it causes sliding when updating the position of a downward pointed vector on a scaled/rotated object
+*/
+
+  /*function spherePlaneCol(entity, worldMatrix, scaler) {
+    const invMatrix = m4.inverse(worldMatrix);
+
+    //transform sphere's global positionn to plan'es local
+    const worldPos = [entity.pos.x, entity.pos.y, entity.pos.z];
+    const localPos = m4.transformPoint(invMatrix, worldPos);
+  
+    //scale radius by inverse of model's scale
+    //extract scale factor from worldMatrix
+    const scale = Math.hypot(worldMatrix[0], worldMatrix[1], worldMatrix[2]);
+    let localRadius = entity.radius;
+  
+    let invRotMatrix = m4.inverse(worldMatrix);
+    invRotMatrix[12] = 0;
+    invRotMatrix[13] = 0;
+    invRotMatrix[14] = 0;
+    
+    let localRotMatrix = m4.multiply(invRotMatrix, entity.rotMatrix);
+    
+    let planeUp = [worldMatrix[4], worldMatrix[5], worldMatrix[6]];
+    let pLen = Math.hypot(planeUp[0], planeUp[1], planeUp[2]);
+    planeUp = [planeUp[0] / pLen, planeUp[1] / pLen, planeUp[2] / pLen];
+    
+    let distFromPlane = localPos[1]; 
+    let pushout = entity.radius - distFromPlane * (scaler);
+    
+    if (pushout > 0 && !true) {
+      //pushout += 0.1;
+      entity.pos.y += pushout;
+      entity.relVel[1] = 0;
+      localPos[0] += planeUp[0] * (pushout / 0.1);
+      localPos[1] += planeUp[1] * (pushout / 0.1);
+      localPos[2] += planeUp[2] * (pushout / 0.1);
+    } else if (pushout > 0 && !false) {
+      entity.pos.x += pushout * planeUp[0];
+      entity.pos.y += pushout * planeUp[1];
+      entity.pos.z += pushout * planeUp[2];
+    
+      let v = entity.vel;
+      let dot = v.x * planeUp[0] + v.y * planeUp[1] + v.z * planeUp[2];
+    
+      //reduce velocity based on plane penetration
+      if (dot < 0) {
+          entity.vel.x -= dot * planeUp[0];
+          entity.vel.y -= dot * planeUp[1];
+          entity.vel.z -= dot * planeUp[2];
+      }
+      entity.relVel[1] = 0;
+        
+      //entity.vel.x *= 0.95;
+      //entity.vel.z *= 0.95;
+    }
+
+    return [m4.translation(localPos[0], localPos[1], localPos[2]), localRotMatrix, localRadius];
+  };*/
+
+
+function meshCollisionsOld(entity, models, matrices = [], scalers = []) {
+  for (let i = 0; i < models.length; i++) {
+    //meshCollision(entity, models[i], matrices[i], scalers[i]);
+  }
+}
+function meshCollisions(entity, objs) {
+  for (let i = 0; i < objs.length; i++) {
+    meshCollision(entity, objs[i].model, objs[i].matrix, objs[i].scaleFactor);
+  }
+}
+
+
+function meshCollision(entity, model, worldMatrix, scaler) {
+  const invMatrix = m4.inverse(worldMatrix);
+  const normalMatrix = m4.transpose(invMatrix); // For transforming normals correctly under scaling
+  // Transform sphere's global positions to model's local
+  let worldPos = [entity.pos.x, entity.pos.y, entity.pos.z];
+  let worldPrevPos = [entity.ppos.x, entity.ppos.y, entity.ppos.z];
+  let localPos = m4.transformPoint(invMatrix, worldPos);
+  //let localPrevPos = m4.transformPoint(invMatrix, worldPrevPos);
+ 
+  // Assume uniform scale; localRadius scaled inversely
+  // If non-uniform, this approximation fails—consider full ellipsoid collision
+  let localRadius = entity.radius / scaler;
+
+  let trisToCollide = [];
+  for (let i = 0; i < model.tris.length; i+= 3) {
+    //trisToCollide.push(i);
+    let v1 = [model.verts[model.tris[i]*3], model.verts[model.tris[i]*3 + 1], model.verts[model.tris[i]*3 + 2]];
+    let v2 = [model.verts[model.tris[i+1]*3], model.verts[model.tris[i+1]*3 + 1], model.verts[model.tris[i+1]*3 + 2]];
+    let v3 = [model.verts[model.tris[i+2]*3], model.verts[model.tris[i+2]*3 + 1], model.verts[model.tris[i+2]*3 + 2]];
+    let x1 = Math.min(v1[0], Math.min(v2[0], v3[0]));
+    let x2 = Math.max(v1[0], Math.max(v2[0], v3[0]));
+    let y1 = Math.min(v1[1], Math.min(v2[1], v3[1]));
+    let y2 = Math.max(v1[1], Math.max(v2[1], v3[1]));
+    let z1 = Math.min(v1[2], Math.min(v2[2], v3[2]));
+    let z2 = Math.max(v1[2], Math.max(v2[2], v3[2]));
+    
+    // AABB cull in local space
+    if (localPos[0] + localRadius <= x1 || localPos[0] - localRadius >= x2 ||
+        localPos[1] + localRadius <= y1 || localPos[1] - localRadius >= y2 ||
+        localPos[2] + localRadius <= z1 || localPos[2] - localRadius >= z2) {
+      continue;
+    }
+    
+    let closestPt = getClosestPointOnTriangle(localPos, v1, v2, v3);
+    trisToCollide.push([i, vec3.distSquared(localPos, closestPt)]);
+  }
+
+  trisToCollide.sort((a, b) => {return a[1] - b[1];});
+ 
+  for (let j = 0; j < trisToCollide.length; j++) {
+    let i = trisToCollide[j][0];
+    let v1 = [model.verts[model.tris[i]*3], model.verts[model.tris[i]*3 + 1], model.verts[model.tris[i]*3 + 2]];
+    let v2 = [model.verts[model.tris[i+1]*3], model.verts[model.tris[i+1]*3 + 1], model.verts[model.tris[i+1]*3 + 2]];
+    let v3 = [model.verts[model.tris[i+2]*3], model.verts[model.tris[i+2]*3 + 1], model.verts[model.tris[i+2]*3 + 2]];
+    let v4 = [
+      (v1[0]+v2[0]+v3[0]) / 3,
+      (v1[1]+v2[1]+v3[1]) / 3,
+      (v1[2]+v2[2]+v3[2]) / 3
+    ];
+    curMatrix = m4.translation(v4[0], v4[1], v4[2]);
+ 
+    // Triangle normal (local)
+    let edge1 = vec3.subtract(v2, v1);
+    let edge2 = vec3.subtract(v3, v1);
+    let normal = vec3.normalize(vec3.cross(edge1, edge2));
+
+    let toSphere = vec3.subtract(localPos, v1);
+    if (vec3.dot(normal, toSphere) <= 0.0001) {  // small epsilon to handle near-plane cases
+      continue;  // Sphere is behind or on the plane → treat as no collision from this side
+    }
+ 
+    //let travelNormal = vec3.normalize(vec3.subtract(localPos, localPrevPos));
+    // Skip if not approaching front face (dot > 0 means moving away or backface)
+    //if (vec3.dot(normal, travelNormal) >= 0) continue;
+ 
+    // Closest point on triangle
+    let closestPt = getClosestPointOnTriangle(localPos, v1, v2, v3);
+ 
+    // Distance squared in local
+    let distSq = vec3.distSquared(localPos, closestPt);
+ 
+    if (distSq > localRadius * localRadius) continue;
+ 
+    // Penetration
+    let dist = Math.sqrt(distSq);
+    let overlap = localRadius - dist;
+    if (overlap <= 0) continue;
+ 
+    // Collision normal (local, unit from surface to sphere)
+    let collisionNormal = vec3.normalize(vec3.subtract(localPos, closestPt));
+ 
+    // Removed rotation-dependent Y-check; handle "ground" in world space if needed
+ 
+    // Displacement in local space
+    let displacementLocal = vec3.scale(collisionNormal, overlap);
+ 
+    // Transform to world displacement (handles rotation/scale)
+    let displacementWorld = m4.transformDirection(worldMatrix, displacementLocal);
+
+    // Set ground normal in world space (use normalMatrix for proper scaling)
+    let worldGroundNormal = vec3.normalize(m4.transformDirection(normalMatrix, collisionNormal));
+    let isGround = vec3.dot(entity.gravityNormal, worldGroundNormal);
+
+    //ignore edge collision for walls. This doesn't work with seams tho
+    /*if (isGround >= -0.7 && Math.abs(collisionNormal[1]) >= 0.1) {
+      
+      return;
+    }*/
+
+    //For some displacementWorld can become NaN on surfaces with many polygons,
+    //like the tippy-top of spheres. Also oddly simply ignoring these collisions appears
+    //to have no side effects? This scares meand is bound to break methinks...
+    //Yup, you can clip through it if you jump correctly. This needs fixing...
+    if (isNaN(displacementWorld[0])) {console.log("bruh");return;}
+    entity.pos.x += displacementWorld[0];
+    entity.pos.y += displacementWorld[1];
+    entity.pos.z += displacementWorld[2];
+ 
+    //For those who come after
+    worldPos = [entity.pos.x, entity.pos.y, entity.pos.z];
+    localPos = m4.transformPoint(invMatrix, worldPos);
+ 
+    if (isGround > 0.7) {
+      //console.log(isGround);
+      entity.groundNormal = worldGroundNormal;
+    } else {
+      entity.wallNormal = worldGroundNormal;
+    }
+ 
+    // Velocity reflection in world space (inelastic, absorbs y if falling; add restitution if bouncy)
+    let worldVel = [entity.vel.x, entity.vel.y, entity.vel.z];
+
+    if (entity.rollable) {
+      let dot = vec3.dot(worldVel, worldGroundNormal);
+      if (dot < 0) {
+        entity.vel.x -= dot * worldGroundNormal[0];
+        entity.vel.y -= dot * worldGroundNormal[1];
+        entity.vel.z -= dot * worldGroundNormal[2];
+      }
+    } else {
+      if (isGround > 0.7){
+        if (entity.relVel[1] < 0) entity.relVel[1] = 0;
+      } else if (isGround > 0) {
+      }
+    }
+  }
+}
+
+function sphereEntity(x, y, z, r) {
+  this.rotMatrix = m4.identity();
+  this.pos = new Vec3(x, y, z);
+  this.ppos = new Vec3(x, y, z);
+  this.vel = new Vec3(0, 0, 0);
+  this.radius = r;
+  this.grounded = false;
+  this.gravityNormal = [0, -1, 0];
+  this.groundNormal = [0, 1, 0];
+  this.rollable = true;
+}
+
+
+sphereEntity.prototype.run = function() {
+  if (!this.grounded) {
+    this.gravityNormal = [0, -1, 0];
+    this.groundNormal = [0, 1, 0];
+  }
+  this.vel.z = 0.1;
+  let MAX_SPEED = 0.4;
+  let spd = Math.hypot(this.vel.x, this.vel.z);
+  if (spd > MAX_SPEED) {
+      this.vel.x = (this.vel.x / spd) * MAX_SPEED;
+      this.vel.z = (this.vel.z / spd) * MAX_SPEED;
+  }
+  if (!this.grounded) {
+    this.vel.y -= 0.01;
+  }
+  this.grounded = false;
+  this.ppos.x = this.pos.x;
+  this.ppos.y = this.pos.y;
+  this.ppos.z = this.pos.z;
+  this.pos.x += this.vel.x;
+  this.pos.y += this.vel.y;
+  this.pos.z += this.vel.z;
+
+  for (let i = 0; i < 3; i++) {
+    meshCollisions(this, scene.objs);
+  }
+  
+  let rcast = raycastModels(scene.objs, [this.pos.x, this.pos.y, this.pos.z], vec3.invert(this.groundNormal), this.radius + spd + 0.1);
+  if (rcast && this.vel.y <= 0 && this.vel.y >= -0.01) {
+    //rcast.normal = vec3.normalize(rcast.normal)
+    this.grounded = true;
+    this.pos.x -= (rcast.distance - this.radius) * rcast.normal[0] * this.gravityNormal[0];
+    this.pos.y -= (rcast.distance - this.radius) * rcast.normal[1] * this.gravityNormal[1];
+    this.pos.z -= (rcast.distance - this.radius) * rcast.normal[2] * this.gravityNormal[2];
+    //console.log(rcast.normal);
+    this.vel.y = 0;
+    //console.log("e");
+  }
+  //this.collideWithMeshLocal(planeModel, movePlaneMatrix);
+  /*if (this.pos.y - this.radius < 0) {
+    this.pos.y = this.radius;
+    this.vel.y = 0;
+    //this.grounded = true;
+  }*/
+  
+  let dx = -this.vel.x;
+  let dz = -this.vel.z;
+  let dist = Math.hypot(dx, dz);
+  if (dist > 0) {
+      let theta = dist / this.radius;
+      let dir_x = dx / dist;
+      let dir_z = dz / dist;
+      let axis = [-dir_z, 0, dir_x];
+      let small_rot = m4.axisRotation(axis, theta);
+      this.rotMatrix = m4.multiply(small_rot, this.rotMatrix);
+  }
+};
+
+sphereEntity.prototype.draw = function() {
+  let m = m4.identity();
+  m = m4.translate(m, this.pos.x, this.pos.y, this.pos.z);
+  m = m4.multiply(m, this.rotMatrix);
+  m = m4.scale(m, this.radius, this.radius, this.radius);
+  sphereModel.prep(planeTexture, false);
+  sphereModel.draw(m, drawMode ? gl.TRIANGLES : gl.LINE_STRIP);
+}
+
+
+
+
+let entities = [];
+entities.push(new mrCube(20, 51, 3));
+for (let i = 0; i < 10; i++) {
+  let r = 0.5 + Math.random() * 4.5;
+  //entities.push(new sphereEntity(Math.random() * 100 - 50, r, Math.random() * 100 - 50, r));
+}
+
+let movePlaneMatrix = m4.scale(m4.zRotate(m4.yRotate(m4.translation(0.0, 0.01, 5.0), degToRad(10)), degToRad(20)), 0.1, 0.1, 0.1);
+
+    
+let tinyTerrainMatrix = m4.translation(0.0, 5.0, 0.0);
+  tinyTerrainMatrix = m4.scale(tinyTerrainMatrix, 0.2, 0.2, 0.2);
+  tinyTerrainMatrix = m4.xRotate(tinyTerrainMatrix, degToRad(5));
+  tinyTerrainMatrix = m4.yRotate(tinyTerrainMatrix, degToRad(45));
+  tinyTerrainMatrix = m4.zRotate(tinyTerrainMatrix, degToRad(10));
+
+
+  let scene = new sceneHandler();
+  scene.add(1.0, m4.translation(5.0, 2.0, 5.0), brickCubeModel, brickTexture, true);
+  scene.add(1.0, m4.translation(0.0, 0.0, 0.0), terrainModel, planeTexture, false);
+  scene.add(0.2, tinyTerrainMatrix, terrainModel, planeTexture, false);
+  scene.add(1.0, m4.identity(), terrainModel, planeTexture, false);
+  scene.add(1.0, m4.identity(), planeModel, planeTexture, false);
+  scene.add(1.0, m4.xRotate(m4.translate(m4.identity(), 0, 20, 20),degToRad(-90)), planeModel, planeTexture, false);
+  scene.add(1.0, m4.zRotate(m4.translate(m4.identity(), 0, 20, 20),degToRad(-90)), planeModel, planeTexture, false);
+  scene.add(0.1, movePlaneMatrix, planeModel, planeTexture, false);
+  scene.add(10.0, m4.zRotate(m4.scale(m4.translation(20.0, 5.0, 5.0), 10.0, 10.0, 10.0), degToRad(0)), brickCubeModel, brickTexture, true);
+  scene.add(10.0, m4.zRotate(m4.scale(m4.translation(20.0, 25.0, 5.0), 10.0, 10.0, 10.0), degToRad(180)), brickCubeModel, brickTexture, true);
+  scene.add(10.0, m4.zRotate(m4.scale(m4.translation(20.0, 45.0, 5.0), 10.0, 10.0, 10.0), degToRad(90)), brickCubeModel, brickTexture, true);
+  scene.add(20.0, m4.scale(m4.translation(0.0, 90.0, 0.0), 20.0, 20.0, 20.0), sphereModel, brickTexture, false);
+  /*
+
+  terrainModel.prep(planeTexture, false);
+  terrainModel.draw(tinyTerrainMatrix, drawMode ? gl.TRIANGLES : gl.LINE_STRIP);
+  
+    
+  planeModel.prep(planeTexture, false);
+  curMatrix = m4.translation(0.0, 0.0, 0.0);
+  planeModel.draw(curMatrix, drawMode ? gl.TRIANGLES : gl.LINE_STRIP);
+
+    
+  planeModel.prep(planeTexture, false);
+  planeModel.draw(movePlaneMatrix, drawMode ? gl.TRIANGLES : gl.LINE_STRIP);
+  */
+
+  function fixedRun() {//console.log("u_projectedTexture location:", projectedTextureLocation);
+    gamepadInput();
+    timer++;
+    /*moveDirs = [0, 0];
+    if (keys[65]) {
+      moveDirs[0] += 1;
+    }
+    if (keys[68]) {
+      moveDirs[0] += -1;
+    }
+    if (keys[87]) {
+      moveDirs[1] += 1;
+    }
+    if (keys[83]) {
+      moveDirs[1] += -1;
+    }
+
+    if (controllers.length > 0) {
+      moveDirs[0] += -controllers[0].axes[0];
+      moveDirs[1] += -controllers[0].axes[1];
+    }*/
+      /*camPos[0] += camSpeed * Math.cos(degToRad(camPos[4])) * moveDirs[0];
+      camPos[2] += camSpeed * Math.sin(degToRad(camPos[4])) * moveDirs[0];
+      camPos[0] -= camSpeed * Math.sin(degToRad(camPos[4])) * moveDirs[1];
+      camPos[2] += camSpeed * Math.cos(degToRad(camPos[4])) * moveDirs[1];*/
+
+
+    /*if (keys[32] || controllers[0] != undefined && controllers[0].keys[0]) {
+      camPos[1] += 0.1;
+    }
+    if (keys[16] || controllers[0] != undefined && controllers[0].keys[1]) {
+      camPos[1] -= 0.1;
+    }*/
+
+    if (keysDown[69] || controllers[0] != undefined && controllers[0].keysDown[2]) {
+      drawMode = !drawMode;
+      if (controllers[0] != undefined) {vibrateGamepad(0, 200, 1);}
+    }
+
+    
+
+
+    //camPos[5] += degToRad(1);
+    /*camPos[3] += (keys[73] ? -3 : 0) + (keys[75] ? 3 : 0);
+    camPos[4] += (keys[74] ? -3 : 0) + (keys[76] ? 3 : 0);
+    
+    if (controllers[0] != undefined) {
+      camPos[3] += controllers[0].axes[3];
+      camPos[4] += controllers[0].axes[2];
+      //camPos[3] += controllers[0].axes[3]*3;
+      //camPos[4] += controllers[0].axes[2]*3;
+    }*/
+
+    //camPos[3] = constrain(camPos[3], -89.99, 89.99);
+    /*camDir = [0, 0, -1];
+    
+    camDir[0] = Math.cos(degToRad(camPos[4]+90)) * Math.cos(degToRad(-camPos[3]));
+    camDir[1] = Math.sin(degToRad(-camPos[3]));
+    camDir[2] = Math.sin(degToRad(camPos[4]+90)) * Math.cos(degToRad(-camPos[3]));
+    let camDirLength = Math.sqrt(camDir[0]*camDir[0] + camDir[1]*camDir[1] + camDir[2]*camDir[2]); 
+    camDir[0] /= camDirLength;
+    camDir[1] /= camDirLength;
+    camDir[2] /= camDirLength;
+    camDir[0] += camPos[0];
+    camDir[1] += camPos[1];
+    camDir[2] += camPos[2];*/
+
+    for (let i = 0; i < entities.length; i++) {
+      entities[i].run();
+    }
+
+    
+    /*cameraMatrix = m4.translation(camPos[0], camPos[1], camPos[2]);
+    cameraMatrix = m4.lookAt([camPos[0], camPos[1], camPos[2]], camDir, [0, 1, 0]);*/
+
+/*cameraMatrix = m4.lookAt([camPos[0], camPos[1], camPos[2]], 
+  [entities[0].pos[0] + entities[0].gravityNormal[0] * 0, 
+   entities[0].pos[1] + entities[0].gravityNormal[1] * 0, 
+   entities[0].pos[2] + entities[0].gravityNormal[2] * 0], 
+  entities[0].gravityNormal)*/
+
+    cameraMatrix = m4.identity();
+    cameraMatrix = m4.translate(cameraMatrix, camPos[0], camPos[1], camPos[2]);
+    cameraMatrix = m4.yRotate(cameraMatrix, degToRad(-camPos[4] + 180));
+    cameraMatrix = m4.xRotate(cameraMatrix, degToRad(-camPos[3]));
+    cameraMatrix = m4.zRotate(cameraMatrix, degToRad(camPos[5]));
+
+    if (keysDown[70] || controllers[0] != undefined && controllers[0].keysDown[3]) {
+      fullscreen();
+    }  
+
+    keysDown = [];
+    clicked = false;
+  };
+
+  
+  gl.useProgram(program);
+  gl.uniform1f(getShaderVar("u_excludeProjector"), -1.0);
+function run() {
+  //gl.enable(gl.DEPTH_TEST);
+  //gl.depthFunc(gl.LEQUAL);//gl.LESS
+  //gl.clearDepth(1.0);
+  //gl.depthMask(true);
+  //gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.clearColor(backgroundColor[0], backgroundColor[1], backgroundColor[2], 1);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+
+  //var cameraMatrix = m4.yRotation(camPos[5]);
+  //cameraMatrix = m4.xRotate(cameraMatrix, degToRad(-camPos[3]));
+  //cameraMatrix = m4.yRotate(cameraMatrix, degToRad(-camPos[4]));
+  //cameraMatrix = m4.multiply(cameraMatrix, m4.lookAt([camPos[0], camPos[1], camPos[2]], translation, [0, 1, 0]));
+  //cameraMatrix = m4.multiply(cameraMatrix, m4.lookAt([camPos[0], camPos[1], camPos[2]], [camPos[0] + ], [0, 1, 0]));
+  var projectionMatrix = m4.perspective(fieldOfViewRadians, aspect, _settings.zNear, _settings.zFar);
+  var viewMatrix = m4.inverse(cameraMatrix);
+  //projectionMatrix = m4.multiply(projectionMatrix, m4.inverse(cameraMatrix));
+  //var viewMatrix = m4.lookAt([camPos[0], camPos[1], camPos[2]], translation, [0, 1, 0]);
+  //projectionMatrix = m4.multiply(projectionMatrix, m4.inverse(viewMatrix));
+  gl.uniformMatrix4fv(viewLocation, false, viewMatrix);
+
+let projectorPosition = [entities[0].pos.x, entities[0].pos.y /*- entities[0].radius*/, entities[0].pos.z];
+gl.uniform3fv(getShaderVar("u_projectorPosition"), projectorPosition);
+let textureWorldMatrix = m4.lookAt(
+      //[0, 10, 0],          // position
+      //[entities[0].pos.x, 1.0, entities[0].pos.z], // target
+      projectorPosition,
+      [entities[0].pos.x, -100.0, entities[0].pos.z],
+      [0, 1, 0],//up
+  );
+let projectorDir = [
+    -textureWorldMatrix[8],     // -Z.x
+    -textureWorldMatrix[9],     // -Z.y
+    -textureWorldMatrix[10]     // -Z.z
+];
+gl.uniform3fv(getShaderVar("u_projectorDir"), projectorDir);
+textureWorldMatrix = m4.scale(
+      textureWorldMatrix,
+      2.0, 2.0, 100.0,
+  );
+const textureMatrix = m4.inverse(textureWorldMatrix);
+gl.uniformMatrix4fv(getShaderVar("u_textureMatrix"), false, textureMatrix);
+
+
+
+  
+  gl.uniformMatrix4fv(projectionLocation, false, projectionMatrix);
+  gl.uniform3fv(reverseLightDirectionLocation, vec3.normalize([100.0, -50, 70]));
+  //gl.uniform3fv(reverseLightDirectionLocation, vec3.normalize([Math.cos(timer / 100 * Math.PI / 180) * 100, -50, Math.sin(timer * Math.PI / 180) * 100]));
+  gl.uniform4fv(fogColorLocation, backgroundColor);
+
+
+  
+  scene.draw();
+
+
+gl.activeTexture(gl.TEXTURE2);
+gl.bindTexture(gl.TEXTURE_2D, projTexture.img);
+gl.uniform1i(getShaderVar("u_projectedTexture"), 2);
+    for (let i = 0; i < entities.length; i++) {
+      entities[i].draw();
+    }
+  }

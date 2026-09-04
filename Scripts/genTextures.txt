@@ -1,0 +1,121 @@
+function addCanvas(id) {
+  const canvas = document.createElement('canvas');
+  canvas.id = id;
+  canvas.width = 64;
+  canvas.height = 64;
+  canvas.style.border = '1px solid black';
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+
+  if (id == "bricks") {
+    ctx.fillStyle = 'rgb(255, 0, 0)';
+    for (let i = 0; i < 8; i++) {
+      ctx.fillStyle = 'rgb(' + Math.round(128 + 32 + Math.random() * 96) + ', 0, 0)';
+      ctx.fillRect(0, 8 * i, 16 + ((i % 2) * 16), 8);
+      ctx.fillStyle = 'rgb(' + Math.round(128 + 32 + Math.random() * 96) + ', 0, 0)';
+      ctx.fillRect(16 + ((i % 2) * 16), 8 * i, 32, 8);
+      ctx.fillStyle = 'rgb(' + Math.round(128 + 32 + Math.random() * 96) + ', 0, 0)';
+      ctx.fillRect(48 + ((i % 2) * 16), 8 * i, 32, 8);
+      ctx.fillStyle = 'rgb(255, 255, 255)';
+      ctx.fillRect(16 + ((i % 2) * 16), 8 * i, 1, 8);
+      ctx.fillRect(48 + ((i % 2) * 16), 8 * i, 1, 8);
+      ctx.fillRect(0, 8 * i, 64, 1);
+    }
+  } else if (id == "checkers") {
+    ctx.fillStyle = 'rgb(0, 0, 0)';
+    ctx.fillRect(0, 0, 64, 64);
+    ctx.fillStyle = 'rgb(255, 255, 255)';
+    ctx.fillRect(0, 0, 32, 32);
+    ctx.fillRect(32, 32, 32, 32);
+  } else if (id == "orange") {
+    ctx.fillStyle = 'rgba(255, 100, 0, 0.5)';
+    //ctx.fillRect(0, 0, 64, 64);
+    /*for (let i = 0; i < 64; i += 2) {
+      ctx.fillStyle = 'rgba(0, ' + (255 * (i / 64)) + ', ' + (255 * (i / 64)) + ', 0.5)';
+      ctx.fillRect(i, i, 2, 2);
+    }*/
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    for (let i = 0; i < 64; i++) {
+        for (let j = 0; j < 64; j++) {
+        let x = i - 32;
+        let y = j - 32;
+        if (x*x + y*y < 30*30) {
+          ctx.fillRect(i, j, 1, 1);
+        }
+      }
+    }
+  }
+}
+addCanvas("checkers");
+addCanvas("bricks");
+addCanvas("orange");
+
+function generateNormalMap(sourceCanvasId, normalCanvasId, strength = 2.0) {
+  const sourceCanvas = document.getElementById(sourceCanvasId);
+  const sourceCtx = sourceCanvas.getContext('2d');
+  const sourceData = sourceCtx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
+  
+  const normalCanvas = document.createElement('canvas');
+  normalCanvas.id = normalCanvasId;
+  normalCanvas.width = sourceCanvas.width;
+  normalCanvas.height = sourceCanvas.height;
+  normalCanvas.style.border = '1px solid black';
+  document.body.appendChild(normalCanvas);
+  const normalCtx = normalCanvas.getContext('2d');
+  const normalData = normalCtx.createImageData(normalCanvas.width, normalCanvas.height);
+  
+  const w = sourceCanvas.width;
+  const h = sourceCanvas.height;
+  
+  // Helper to get grayscale value (height)
+  function getHeight(x, y) {
+    x = (x + w) % w;
+    y = (y + h) % h;
+    const idx = (y * w + x) * 4;
+    return (sourceData.data[idx] + sourceData.data[idx + 1] + sourceData.data[idx + 2]) / 3;
+  }
+  
+  // Generate normal map using Sobel filter
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      // Sample surrounding pixels
+      const tl = getHeight(x - 1, y - 1);
+      const t = getHeight(x, y - 1);
+      const tr = getHeight(x + 1, y - 1);
+      const l = getHeight(x - 1, y);
+      const r = getHeight(x + 1, y);
+      const bl = getHeight(x - 1, y + 1);
+      const b = getHeight(x, y + 1);
+      const br = getHeight(x + 1, y + 1);
+      
+      // Sobel filter for X and Y gradients
+      const dX = (tr + 2 * r + br) - (tl + 2 * l + bl);
+      const dY = (bl + 2 * b + br) - (tl + 2 * t + tr);
+      
+      // Calculate normal (Z is always positive, pointing out)
+      const nX = -dX * strength / 255;
+      const nY = -dY * strength / 255;
+      const nZ = 1.0;
+      
+      // Normalize
+      const length = Math.sqrt(nX * nX + nY * nY + nZ * nZ);
+      const normalizedX = nX / length;
+      const normalizedY = nY / length;
+      const normalizedZ = nZ / length;
+      
+      // Convert from [-1, 1] to [0, 255]
+      const idx = (y * w + x) * 4;
+      normalData.data[idx] = Math.floor((normalizedX * 0.5 + 0.5) * 255);
+      normalData.data[idx + 1] = Math.floor((normalizedY * 0.5 + 0.5) * 255);
+      normalData.data[idx + 2] = Math.floor((normalizedZ * 0.5 + 0.5) * 255);
+      normalData.data[idx + 3] = 255;
+    }
+  }
+  
+  normalCtx.putImageData(normalData, 0, 0);
+}
+
+// Call after creating bricks canvas
+generateNormalMap("bricks", "bricks_normal", 3.0);
+generateNormalMap("checkers", "checkers_normal", 3.0);
+generateNormalMap("orange", "orange_normal", 3.0);

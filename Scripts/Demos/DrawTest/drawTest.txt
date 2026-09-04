@@ -1,0 +1,531 @@
+"use strict"
+
+let keys = {};
+let keysDown = {};
+
+document.addEventListener("keydown",function(e) {
+    e.preventDefault();
+    if (!keys[e.keyCode]) {
+        keysDown[e.keyCode] = true;
+        console.log(e.keyCode);
+    } else {
+        keysDown[e.keyCode] = false;
+    }
+    keys[e.keyCode] = true;
+});
+
+document.addEventListener("keyup",function(e) {
+    e.preventDefault();
+    keysDown[e.keyCode] = false;
+    keys[e.keyCode] = false;
+});
+
+var canvas = document.querySelector("#canvas");
+canvas.width = 192/2;
+canvas.height = 256/2;
+var can = canvas.getContext("2d", { antialias: !false });
+
+
+  function fixedRun() {
+  };
+
+  function run() {
+  };
+
+  let tiles = [];
+
+  let tw = 455;
+  let th = 256;
+  let ts = 1;
+  for (let i = 0; i < tw * th; i++) {
+    tiles[i] = 0;
+  }
+  
+  function fill(r, g, b, a = 1.0) {
+    can.fillStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
+  };
+  let overwriteOnly = false;
+  //ai function
+  function ellipse(centerX, centerY, radiusX, radiusY, value = 1) {
+    let xStart = Math.max(0, Math.floor(centerX - radiusX));
+    let xEnd = Math.min(tw, Math.ceil(centerX + radiusX));
+    let yStart = Math.max(0, Math.floor(centerY - radiusY));
+    let yEnd = Math.min(th, Math.ceil(centerY + radiusY));
+  
+    for (let y = yStart; y < yEnd; y++) {
+      for (let x = xStart; x < xEnd; x++) {
+        
+        let dx = x - centerX;
+        let dy = y - centerY;
+
+        let dv = (dx * dx) / (radiusX * radiusX) + (dy * dy) / (radiusY * radiusY);
+        if (dv <= 1) {
+          let index = y * tw + x;
+          tiles[index] = value;
+        }
+      }
+    }
+  }
+  function bezier(x0, y0, x1, y1, x2, y2, steps = 100, value = 1) {
+    for (let i = 0; i <= steps; i++) {
+      // t is the percentage of the way along the curve (0.0 to 1.0)
+      let t = i / steps;
+      
+      // Quadratic Bezier formula
+      let invT = 1 - t;
+      let x = invT * invT * x0 + 2 * invT * t * x1 + t * t * x2;
+      let y = invT * invT * y0 + 2 * invT * t * y1 + t * t * y2;
+  
+      // Convert floating point coordinates to integer grid coordinates
+      let gridX = Math.floor(x);
+      let gridY = Math.floor(y);
+  
+      // Safety check: ensure coordinates are within the grid bounds
+      if (gridX >= 0 && gridX < tw && gridY >= 0 && gridY < th) {
+        let index = gridY * tw + gridX;
+        tiles[index] = value;
+      }
+    }
+  }
+
+
+  function leaveOutline() {
+  let nextTiles = new Array(tiles.length).fill(0);
+
+  for (let y = 1; y < th - 1; y++) {
+    for (let x = 1; x < tw - 1; x++) {
+      let i = y * tw + x;
+      if (tiles[i] === 0) continue;
+
+      let hasEmptyNeighbor = 
+        tiles[i - 1] === 0 ||
+        tiles[i + 1] === 0 ||
+        tiles[i - tw] === 0 ||
+        tiles[i + tw] === 0;
+      if (hasEmptyNeighbor) {
+        nextTiles[i] = tiles[i];
+      }
+    }
+  }
+  tiles = nextTiles;
+  };
+
+function rect(x, y, w, h, value = 1) {
+  if (w < 0) {x += w; w = -w;}
+  x = Math.round(x);
+  y = Math.round(y);
+  let xStart = Math.max(0, Math.floor(x));
+  let xEnd = Math.min(tw, Math.ceil(x + w));
+  let yStart = Math.max(0, Math.floor(y));
+  let yEnd = Math.min(th, Math.ceil(y + h));
+
+  for (let ty = yStart; ty < yEnd; ty++) {
+    for (let tx = xStart; tx < xEnd; tx++) {
+      let index = ty * tw + tx;
+      if (overwriteOnly && tiles[index] == 0) {continue;}
+      tiles[index] = value;
+    }
+  }
+}
+
+function line(x0, y0, x1, y1, value = 1) {
+  x0 = Math.floor(x0);
+  y0 = Math.floor(y0);
+  x1 = Math.floor(x1);
+  y1 = Math.floor(y1);
+
+  let dx = Math.abs(x1 - x0);
+  let dy = Math.abs(y1 - y0);
+  let sx = (x0 < x1) ? 1 : -1;
+  let sy = (y0 < y1) ? 1 : -1;
+  let err = dx - dy;
+
+  while (true) {
+    // Safety check: stay within grid bounds
+    if (x0 >= 0 && x0 < tw && y0 >= 0 && y0 < th) {
+      tiles[y0 * tw + x0] = value;
+    }
+
+    if (x0 === x1 && y0 === y1) break;
+    
+    let e2 = 2 * err;
+    if (e2 > -dy) {
+      err -= dy;
+      x0 += sx;
+    }
+    if (e2 < dx) {
+      err += dx;
+      y0 += sy;
+    }
+  }
+}
+
+function thickLine(x0, y0, x1, y1, thickness, value = 1) {
+  x0 = Math.round(x0);
+  y0 = Math.round(y0);
+  x1 = Math.round(x1);
+  y1 = Math.round(y1);
+  // Bresenham's algorithm remains the same for the pathing
+  let dx = Math.abs(x1 - x0);
+  let dy = Math.abs(y1 - y0);
+  let sx = (x0 < x1) ? 1 : -1;
+  let sy = (y0 < y1) ? 1 : -1;
+  let err = dx - dy;
+
+  let radius = thickness / 2;
+
+  while (true) {
+    // Instead of one pixel, draw a filled circle/square "brush"
+    for (let iy = -Math.floor(radius); iy <= Math.ceil(radius); iy++) {
+      for (let ix = -Math.floor(radius); ix <= Math.ceil(radius); ix++) {
+        // Distance check for a circular brush (prevents blocky corners)
+        if (ix * ix + iy * iy <= radius * radius) {
+          let px = Math.floor(x0 + ix);
+          let py = Math.floor(y0 + iy);
+          
+          if (px >= 0 && px < tw && py >= 0 && py < th) {
+            tiles[py * tw + px] = value;
+          }
+        }
+      }
+    }
+
+    if (x0 === x1 && y0 === y1) break;
+    let e2 = 2 * err;
+    if (e2 > -dy) { err -= dy; x0 += sx; }
+    if (e2 < dx) { err += dx; y0 += sy; }
+  }
+}
+
+  let face = {
+    x:227,
+    y:128,
+    w:40,
+    h:40,
+
+    x2:227 + 0,
+    y2:128 + 18,
+    w2:32,
+    h2:32,
+
+    
+    cx:227 + 7 - 7,
+    cy:128 + 20 - 20
+  }
+  function drawFace(face) {
+    ellipse(face.x, face.y, face.w, face.h);
+    ellipse(face.x2, face.y2, face.w2, face.h2);
+    leaveOutline();
+
+    let minX = face.x - face.w;
+    let maxX = face.x + face.w;
+    let minY = face.y - face.h;
+    let maxY = Math.max(face.y + face.h, face.y2 + face.h2);
+    bezier(minX, face.y, face.cx, face.cy, maxX, face.y, 200, 1);
+    bezier(face.x, minY, face.cx, face.cy, face.x2, maxY, 200, 1);
+  };
+
+
+function lineAngle(x, y, len, angleXY, angleZ = 0, value = 1) {
+  let distXY = len * Math.cos(angleZ);
+  
+  let x1 = x + distXY * Math.cos(angleXY);
+  let y1 = y + distXY * Math.sin(angleXY);
+
+  line(x, y, x1, y1, value);
+}
+
+function thickLineAngle(x, y, thickness, len, angleXY, angleZ = 0, value = 1) {
+  let distXY = len * Math.cos(angleZ);
+  
+  let x1 = x + distXY * Math.cos(angleXY);
+  let y1 = y + distXY * Math.sin(angleXY);
+
+  thickLine(x, y, x1, y1, thickness, value);
+}
+
+function patternLine(x0, y0, x1, y1, thickness, palette, stripeWidth = 2) {
+  
+  x0 = Math.round(x0);
+  y0 = Math.round(y0);
+  x1 = Math.round(x1);
+  y1 = Math.round(y1);
+  let dx = Math.abs(x1 - x0);
+  let dy = Math.abs(y1 - y0);
+  let sx = (x0 < x1) ? 1 : -1;
+  let sy = (y0 < y1) ? 1 : -1;
+  let err = dx - dy;
+
+  let radius = thickness / 2;
+
+  //let iter = 0;
+  let patternOrgs = [];
+  while (true) {
+    for (let iy = -Math.floor(radius); iy <= Math.ceil(radius); iy++) {
+      for (let ix = -Math.floor(radius); ix <= Math.ceil(radius); ix++) {
+        if (ix * ix + iy * iy <= radius * radius) {
+          let px = Math.floor(x0 + ix);
+          let py = Math.floor(y0 + iy);
+
+          let canDo = false;
+          if ((ix - 1) * (ix - 1) + iy * iy > radius * radius) {
+            canDo = true;
+          }
+          if (px >= 0 && px < tw && py >= 0 && py < th) {
+            // THE MATH: (px + py) creates the diagonal. 
+            // Dividing by stripeWidth controls thickness.
+            // Modulo palette.length cycles through colors.
+            let colorIndex = Math.abs(px - ((py)/2)) % palette.length;
+            if (colorIndex == 2 && canDo) {
+              colorIndex = 2;
+            } else {
+              colorIndex = 0;
+            }
+            tiles[py * tw + px] = palette[colorIndex];
+          }
+        }
+      }
+    }
+
+    if (x0 === x1 && y0 === y1) break;
+    let e2 = 2 * err;
+    if (e2 > -dy) { err -= dy; x0 += sx; }
+    if (e2 < dx) { err += dx; y0 += sy; }
+  }
+}
+
+
+function patternLineAngle(x, y, thickness, palette, len, angleXY, angleZ = 0, value = 1) {
+  let distXY = len * Math.cos(angleZ);
+  
+  let x1 = x + distXY * Math.cos(angleXY);
+  let y1 = y + distXY * Math.sin(angleXY);
+
+  patternLine(x, y, x1, y1, thickness, palette, value);
+}
+
+  function agonyKnightLeg(data, x, y) {
+    let angle = data.angle1;
+    let angle2 = data.angle2;
+    let L = 12;
+    thickLineAngle(x, y, 2, L, angle, 0);
+    thickLineAngle(x + Math.cos(angle) * L, y + Math.sin(angle) * L + 3, 2, 14, angle2, 0);
+    
+    
+    rect(x + Math.cos(angle) * L - 1, y + Math.sin(angle) * L, 3, 4, 1);
+    rect(x + Math.cos(angle) * L - 2, y + Math.sin(angle) * L + 1, 5, 2, 1);
+    rect(x + Math.cos(angle) * L - 1, y + Math.sin(angle) * L + 1, 3, 2, 2);
+
+    let footX = x + Math.cos(angle) * L + Math.cos(angle2) * 14 - 1;
+    let footY = y + Math.sin(angle) * L + 3 + Math.sin(angle2) * 14;
+    rect(footX, footY, 3, 2);
+    rect(footX - 1, footY, 1, 3);
+    rect(footX + 1, footY + 2, 3, 1);
+    //lineAngle(x - 1, y + 1, L, angle, 0);
+    //lineAngle(x + 1, y + 1, L, angle, 0);
+    //lineAngle(x - 1, y + 1, L - 2, angle, 0);
+    //lineAngle(x + 1, y + 1, L - 2, angle, 0);
+    /*line(x, y, x - 3, y + 12);
+    line(x - 1, y + 1, x - 4, y + 11);
+    line(x + 1, y + 1, x - 2, y + 11);*/
+  }
+
+  function agonyKnightArm(data, x, y) {
+    let y2 = data.shoulderLift;
+    let angle = data.angle1;
+    let angle2 = data.angle2;
+    let side = data.side;
+    rect(x - (5*side), y + 2 + y2, 3 * side, 2);
+    
+    rect(x - (4*side), y + 4 + y2, 2 * side, 1);
+    rect(x - (3*side), y + 4 + y2 + (y2 == -1 ? 1 : 0), 2 * side, 1);
+    
+    rect(x - (1*side), y + 3, 1 * side, 1);
+    rect(x - (2*side), y + 1, 1 * side, 2);
+    rect(x - (4*side), y + 1, 3 * side, 1);
+    rect(x - (3*side), y, 1 * side, 1);
+    rect(x - (2*side), y - 1, 2 * side, 1);
+    rect(x - (1*side), y, 1 * side, 1);
+
+    thickLineAngle(x - (4*side - (side == -1 ? -1 : 0)), y + 2, 2, 14, angle);
+    thickLineAngle(x - (4*side - (side == -1 ? -1 : 0)) + Math.cos(angle) * 14, y + 2 + Math.sin(angle) * 14, 2, 12, angle2);
+    rect(x - (4*side - (side == -1 ? -1 : 0)) + Math.cos(angle) * 14 - 1, y + 2 + Math.sin(angle) * 14 - 1, 3, 3);
+    rect(x - (4*side - (side == -1 ? -1 : 0)) + Math.cos(angle) * 14, y + 2 + Math.sin(angle) * 14, 1, 1, 2);
+
+    let handX = x - (4*side - (side == -1 ? -1 : 0)) + Math.cos(angle) * 14 + Math.cos(angle2) * 12;
+    let handY = y + 2 + Math.sin(angle) * 14 + Math.sin(angle2) * 12;
+    rect(handX, handY - 1, 2, 4);
+    rect(handX - 1, handY, 4, 2);
+  }
+
+  function agonyKnightBody(data, x, y, offset = 0) {
+    rect(x, y, 16, 4);
+    rect(x+1, y, 14, 11);
+    rect(x+2, y+11, 12, 3);
+    rect(x+3, y+14, 10, 2);
+    rect(x+4, y+16, 8, 2);
+    rect(x+5, y+18, 6, 1);
+    rect(x+4, y+19, 8, 1);
+
+    rect(x + 3, y + 20, 1, 1);
+    rect(x + 12, y + 20, 1, 1);
+
+    //side stripes
+    overwriteOnly = true;
+    for (let i = 0; i < 4; i++) {
+      rect(offset + x + 1, y + 3 + i * 4, 1, 1, 2);
+      rect(offset + x + 2, y + 2 + i * 4, 1, 1, 2);
+      rect(offset + x + 3, y + 3 + i * 4, 1, 1, 2);
+      rect(offset + x + 4, y + 2 + i * 4, 1, 1, 2);
+      rect(offset + x + 5, y + 3 + i * 4, 3, 1, 2);
+      
+      rect(offset + x + 17, y + 3 + i * 4, 1, 1, 2);
+      rect(offset + x + 16, y + 2 + i * 4, 1, 1, 2);
+      rect(offset + x + 15, y + 3 + i * 4, 1, 1, 2);
+      rect(offset + x + 14, y + 2 + i * 4, 1, 1, 2);
+      rect(offset + x + 11, y + 3 + i * 4, 3, 1, 2);
+    }
+    overwriteOnly = false;
+
+    //zipper thing
+    rect(offset + x + 9, y + 1, 1, 15, 2);
+    for (let i = 1; i < 15; i += 2) {
+      rect(offset + x + 8, y + 1 + i, 3, 1, 2);
+    }
+
+    rect(x + 3, y + 20, 2, 1);
+    rect(x + 11, y + 20, 2, 1);
+    agonyKnightLeg(data.legL, x + 3 + data.legL.offsetX, y + 20 + data.legL.offsetY);
+    agonyKnightLeg(data.legR, x + 12 + data.legR.offsetX, y + 20 + data.legR.offsetY);
+    
+    agonyKnightArm(data.armL, x, y);
+    agonyKnightArm(data.armR, x + 16, y);
+  }
+  
+  function agonyKnightHead(data, x, y) {
+    let scanSmaller = 0;
+    let scanLarger = 0;
+    if (Math.round(data.scan) <= 0) {
+      scanSmaller = 0;
+      scanLarger = 1;
+      if (Math.round(data.scan) <= -1) {
+        scanSmaller = 1;
+        scanLarger = 2;
+        //scanSmaller = 2;
+      }
+    }
+    rect(x + 8, y, 4, 1);
+    rect(x + 5, y + 1, 10, 1);
+    rect(x + 3 + scanSmaller, y + 2, 13 - scanSmaller, 1);
+    rect(x + 2 + scanSmaller, y + 3, 15 - scanSmaller, 1);
+    rect(x + 1 + scanSmaller, y + 4, 16 - scanSmaller, 1);
+    rect(x + scanLarger, y + 5, 17 - scanLarger, 1);
+    rect(x+2 + scanSmaller, y + 6, 15 - scanSmaller, 1);
+    rect(x+3 + scanSmaller, y + 7, 13 - scanSmaller, 1);
+    rect(x+5, y + 8, 10, 1);
+
+    rect(x - 1, y + 4, 1, 1);
+    rect(x - 2, y + 5, 1, 2);
+    rect(x - 3, y + 7, 1, 4);
+
+    overwriteOnly = true;
+    rect(x + 7 + data.scan - 2, y + 4, 1, 1, 2);
+    rect(x + 9 + data.scan - 2, y + 3, 1, 3, 2);
+    rect(x + 11 + data.scan - 2, y + 3, 1, 3, 2);
+    rect(x + 13 + data.scan - 2, y + 3, 1, 3, 2);
+    rect(x + 15 + data.scan - 2, y + 3, 1, 3, 2);
+    rect(x + 17 + data.scan - 2, y + 4, 1, 1, 2);
+    overwriteOnly = false;
+  }
+
+  function agonyKnight(data, x, y) {
+    agonyKnightHead(data.head, x - 2 + data.body.offsetX, y - 9 + data.body.offsetY);
+    agonyKnightBody(data, x + data.body.offsetX, y + data.body.offsetY);
+  }
+
+  let timer = 0;
+  let poseData = {
+    "head":{tilt:0,scan:2},
+    "armL":{shoulderLift:0,angle1:110 * Math.PI / 180,angle2:60 * Math.PI / 180, side:1},
+    "armR":{shoulderLift:0,angle1:70 * Math.PI / 180,angle2:120 * Math.PI / 180,side:-1},
+    "legL":{offsetX:0,offsetY:0,angle1: Math.atan2(12, -3),angle2:Math.PI / 2,footPose:0},//
+    "legR":{offsetX:0,offsetY:1,angle1:Math.atan2(12, 6),angle2:Math.PI / 2,footPose:1},
+    "body":{offsetX:0,offsetY:0}
+  };
+
+  //poseData = {"head":{"tilt":0,"scan":2},"armL":{"shoulderLift":0,"angle1":13.613568165555758,"angle2":12.304571226560011,"side":1},"armR":{"shoulderLift":0,"angle1":19.19862177193767,"angle2":11.519173063162565,"side":-1},"legL":{"offsetX":0,"offsetY":0,"angle1":8.448026147500206,"angle2":1.5707963267948966,"footPose":0},"legR":{"offsetX":0,"offsetY":1,"angle1":13.4117199443541,"angle2":1.5707963267948966,"footPose":1},"body":{"offsetX":0,"offsetY":0}};
+  poseData = {"head":{"tilt":0,"scan":2},"armL":{"shoulderLift":0,"angle1":1.6580627893946134,"angle2":0.7853981633974482,"side":1},"armR":{"shoulderLift":0,"angle1":1.1344640137963142,"angle2":1.1344640137963151,"side":-1},"legL":{"offsetX":0,"offsetY":0,"angle1":1.8157749899217608,"angle2":1.5707963267948966,"footPose":0},"legR":{"offsetX":0,"offsetY":1,"angle1":1.1071487177940904,"angle2":1.5707963267948966,"footPose":1},"body":{"offsetX":0,"offsetY":0}};
+  let poses = [];
+  //poseData = poses[1];
+  
+  function runOne() {
+    if (keys[32]) {
+      //poses.push(JSON.parse(JSON.stringify(poseData)));
+      console.log(JSON.stringify(poseData));
+      //document.getElementsByClassName("center")[0].appendElement(document.createElement("p").innerHTML += JSON.stringify(poseData));
+    }
+
+
+    let adder = 5;
+    if (keys[16]) {adder = -5;}
+    adder *= Math.PI / 180;
+
+    //l arm
+    if (keys[82]) {
+      poseData.armL.angle1 += adder; 
+    }
+    if (keys[68]) {
+      poseData.armL.angle2 += adder; 
+    }
+
+    //r arm
+    if (keys[89]) {
+      poseData.armR.angle1 += adder; 
+    }
+    if (keys[74]) {
+      poseData.armR.angle2 += adder; 
+    }
+
+    //l leg
+    if (keys[70]) {
+      poseData.legL.angle1 += adder; 
+    }
+    if (keys[67]) {
+      poseData.legL.angle2 += adder; 
+    }
+
+    if (keys[72]) {
+      poseData.legR.angle1 += adder; 
+    }
+    if (keys[78]) {
+      poseData.legR.angle2 += adder; 
+    }
+
+    
+  
+    //poseData.armL.angle1 += Math.PI / 180;
+    timer++;
+    fill(0, 0, 0);
+    can.fillRect(0, 0, 910, 512);
+    fill(255, 255, 255);
+    agonyKnight(poseData, 32 /*+ Math.round(Math.sin(timer * Math.PI / 180) * 20)*/, 32);
+    //can.fillRect(455, 256, 2, 2);
+    //drawFace(face);
+
+    for (let i = 0; i < tiles.length; i++) {
+      if (tiles[i] == 0) {continue;}
+      if (tiles[i] == 1) {
+        fill(128, 64, 64);
+      } else if (tiles[i] == 2) {
+        fill(0, 64, 64);
+      }
+      can.fillRect((i % tw) * ts, Math.floor(i / tw) * ts, ts, ts);
+
+      tiles[i] = 0;
+    }
+    //poseData.head.scan = 2 + 3*Math.sin(timer * Math.PI / 180);
+    keysDown = [];
+    requestAnimationFrame(runOne);
+  }
+
+  runOne();

@@ -1,0 +1,140 @@
+
+let boxmanModel = new model();
+pushBoxOntoModel(boxmanModel, 0, 0, 0, 0.5, 0.5, 0.5, [1,0,0,0], [1.0,0.0,0.0,0.0]);//head
+
+pushBoxOntoModel(boxmanModel, -1.4, -1, 0, 0.4, 0.4, 0.4, [2,0,0,0], [1.0,0.0,0.0,0.0]);//left shoulder
+pushBoxOntoModel(boxmanModel, -2.5, -1, 0, 0.7, 0.3, 0.3, [3,0,0,0], [1.0,0.0,0.0,0.0]);//left upper arm
+pushBoxOntoModel(boxmanModel, -3.9, -1, 0, 0.7, 0.3, 0.3, [4,0,0,0], [1.0,0.0,0.0,0.0]);//left lower arm
+pushBoxOntoModel(boxmanModel, -5.0, -1, 0, 0.4, 0.4, 0.4, [5,0,0,0], [1.0,0.0,0.0,0.0]);//left hand
+
+
+pushBoxOntoModel(boxmanModel, 1.4, -1, 0, 0.4, 0.4, 0.4, [6,0,0,0], [1.0,0.0,0.0,0.0]);//right shoulder
+pushBoxOntoModel(boxmanModel, 2.5, -1, 0, 0.7, 0.3, 0.3, [7,0,0,0], [1.0,0.0,0.0,0.0]);//right upper arm
+pushBoxOntoModel(boxmanModel, 3.9, -1, 0, 0.7, 0.3, 0.3, [8,0,0,0], [1.0,0.0,0.0,0.0]);//right lower arm
+pushBoxOntoModel(boxmanModel, 5.0, -1, 0, 0.4, 0.4, 0.4, [9,0,0,0], [1.0,0.0,0.0,0.0]);//right hand
+
+pushBoxOntoModel(boxmanModel, 0, -1, 0, 1.0, 0.5, 0.6, [0,0,0,0], [1.0,0.0,0.0,0.0]);//upper body
+pushBoxOntoModel(boxmanModel, 0, -1.8, 0, 0.85, 0.5, 0.5, [0,0,0,0], [1.0,0.0,0.0,0.0]);//middle body
+pushBoxOntoModel(boxmanModel, 0, -2.5, 0, 0.6, 0.5, 0.4, [0,0,0,0], [1.0,0.0,0.0,0.0]);//lower body
+
+pushBoxOntoModel(boxmanModel, -0.5, -3.8, 0, 0.3, 0.8, 0.3, [10,0,0,0], [1.0,0.0,0.0,0.0]);//left thigh
+pushBoxOntoModel(boxmanModel, -0.5, -5.4, 0, 0.3, 0.8, 0.3, [11,0,0,0], [1.0,0.0,0.0,0.0]);//left leg
+pushBoxOntoModel(boxmanModel, -0.5, -6.4, 0.0, 0.4, 0.2, 0.3, [12,0,0,0], [1.0,0.0,0.0,0.0]);//left heel
+pushBoxOntoModel(boxmanModel, -0.5, -6.4, -0.6, 0.4, 0.2, 0.3, [13,0,0,0], [1.0,0.0,0.0,0.0]);//leftfoot
+
+pushBoxOntoModel(boxmanModel, 0.5, -3.8, 0, 0.3, 0.8, 0.3, [14,0,0,0], [1.0,0.0,0.0,0.0]);//right thigh
+pushBoxOntoModel(boxmanModel, 0.5, -5.4, 0, 0.3, 0.8, 0.3, [15,0,0,0], [1.0,0.0,0.0,0.0]);//rightleg
+pushBoxOntoModel(boxmanModel, 0.5, -6.4, 0.0, 0.4, 0.2, 0.3, [16,0,0,0], [1.0,0.0,0.0,0.0]);//right heel
+pushBoxOntoModel(boxmanModel, 0.5, -6.4, -0.6, 0.4, 0.2, 0.3, [17,0,0,0], [1.0,0.0,0.0,0.0]);//right foot
+/*
+boxmanModel.verts = [-0.5,-0.5,-0.5, 0.5,-0.5,-0.5,
+                     -0.5,-0.5,0.5, 0.5,-0.5,0.5,
+                     -0.5,0.5,-0.5, 0.5,0.5,-0.5,
+                     -0.5,0.5,0.5, 0.5,0.5,0.5];
+
+boxmanModel.tris = [0, 1, 2, 2, 1, 3,
+                    4, 6, 5, 6, 7, 5,
+                    2, 3, 6, 6, 3, 7,
+                    0, 4, 1, 4, 5, 1,
+                    0, 2, 4, 4, 2, 6,
+                    1, 5, 3, 3, 5, 7];//indices[0, 1, 2]
+*/
+
+for (let i = 0; i < boxmanModel.verts.length / 3; i++) {
+  boxmanModel.colors.push(255,255,255);
+  //boxmanModel.texcoords.push(0, 0);
+}
+boxmanModel.typify();
+
+// Root / Origin (Index 0)
+addBone(boxmanModel, -1, m4.translation(0.0, -6.5, 0.0));
+
+// Head (Index 1)
+addBone(boxmanModel, 0, m4.translation(0.0, 6.5, 0.0));
+
+// Left Arm Chain (Indices 2-5)
+addBone(boxmanModel, 0, m4.translation(-1.4, 5.5, 0.0));        // 2: Upper Arm
+addBone(boxmanModel, 2, m4.translation(-1.1 + 0.7, 0.0, 0.0));  // 3: Forearm
+addBone(boxmanModel, 3, m4.translation(-1.4 + 0.7, 0.0, 0.0));  // 4: Wrist
+addBone(boxmanModel, 4, m4.translation(-1.1 + 0.4, 0.0, 0.0));  // 5: Hand
+
+// Right Arm Chain (Indices 6-9)
+addBone(boxmanModel, 0, m4.translation(1.4, 5.5, 0.0));         // 6: Upper Arm
+addBone(boxmanModel, 6, m4.translation(1.1 - 0.7, 0.0, 0.0));   // 7: Forearm
+addBone(boxmanModel, 7, m4.translation(1.4 - 0.7, 0.0, 0.0));   // 8: Wrist
+addBone(boxmanModel, 8, m4.translation(1.1 - 0.4, 0.0, 0.0));   // 9: Hand
+
+// Left Leg Chain (Indices 10-13)
+addBone(boxmanModel, 0, m4.translation(-0.5, 3.1, 0));          // 10: Thigh
+addBone(boxmanModel, 10, m4.translation(0.0, -1.6, 0));         // 11: Calf
+addBone(boxmanModel, 11, m4.translation(0.0, -1.6, 0));         // 12: Ankle
+addBone(boxmanModel, 12, m4.translation(0.0, 0.1, -0.3));       // 13: Foot
+
+// Right Leg Chain (Indices 14-17)
+addBone(boxmanModel, 0, m4.translation(0.5, 3.1, 0));           // 14: Thigh
+addBone(boxmanModel, 14, m4.translation(0.0, -1.6, 0));         // 15: Calf
+addBone(boxmanModel, 15, m4.translation(0.0, -1.6, 0));         // 16: Ankle
+addBone(boxmanModel, 16, m4.translation(0.0, 0.1, -0.3));       // 17: Foot
+
+/*boxmanModel.bones = [
+{children:[1,2,6, 10,14], parent:-1, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},//origin
+{children:[], parent:0, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},//head
+{children:[3], parent:0, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},
+{children:[4], parent:2, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},
+{children:[5], parent:3, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},
+{children:[], parent:4, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},//hand
+
+{children:[7], parent:0, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},
+{children:[8], parent:6, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},
+{children:[9], parent:7, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},
+{children:[], parent:8, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},//hand
+
+{children:[11], parent:0, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},//left leg
+{children:[12], parent:10, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},
+{children:[13], parent:11, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},
+{children:[], parent:12, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},
+
+{children:[15], parent:0, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},//left leg
+{children:[16], parent:14, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},
+{children:[17], parent:15, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},
+{children:[], parent:16, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},
+];
+
+boxmanModel.bones[0].localPos = m4.translation(0.0, -6.5, 0.0);
+boxmanModel.bones[1].localPos = m4.translation(0.0, 6.5, 0.0);//head
+boxmanModel.bones[2].localPos = m4.translation(-1.4, 5.5, 0.0);//left arm
+boxmanModel.bones[3].localPos = m4.translation(-1.1+0.7, 0.0, 0.0);
+boxmanModel.bones[4].localPos = m4.translation(-1.4+0.7, 0.0, 0.0);
+boxmanModel.bones[5].localPos = m4.translation(-1.1+0.4, 0.0, 0.0);
+
+boxmanModel.bones[6].localPos = m4.translation(1.4, 5.5, 0.0);//right arm
+boxmanModel.bones[7].localPos = m4.translation(1.1-0.7, 0.0, 0.0);
+boxmanModel.bones[8].localPos = m4.translation(1.4-0.7, 0.0, 0.0);
+boxmanModel.bones[9].localPos = m4.translation(1.1-0.4, 0.0, 0.0);
+
+boxmanModel.bones[10].localPos = m4.translation(-0.5, 3.1, 0);
+boxmanModel.bones[11].localPos = m4.translation(0.0, -1.6, 0);
+boxmanModel.bones[12].localPos = m4.translation(0.0, -1.6, 0);
+boxmanModel.bones[13].localPos = m4.translation(0.0, 0.1, -0.3);
+
+boxmanModel.bones[14].localPos = m4.translation(0.5, 3.1, 0);
+boxmanModel.bones[15].localPos = m4.translation(0.0, -1.6, 0);
+boxmanModel.bones[16].localPos = m4.translation(0.0, -1.6, 0);
+boxmanModel.bones[17].localPos = m4.translation(0.0, 0.1, -0.3);*/
+/*for (let i = 6; i <= 9; i++) {
+  let move = boxmanModel.bones[i].localPos;
+  move = m4.xRotate(move, 0);
+  move = m4.yRotate(move, 180);
+  move = m4.zRotate(move, 0);
+  boxmanModel.bones[i].localPos = m4.multiply(m4.identity(), move);
+}*/
+
+/*for (let i = 0; i < boxmanModel.bones.length; i++) {
+  boxmanModel.bones[i].binvPos = m4.inverse(boxmanModel.bones[i].curPos);
+}*/
+
+computeBindMatrices(boxmanModel, 0, m4.identity());
+
+
+
+

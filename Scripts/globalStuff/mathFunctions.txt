@@ -1,0 +1,40 @@
+
+function dist3d(x1, y1, z1, x2, y2, z2) {
+    return Math.sqrt((x2 - x1)*(x2 - x1) + (y2 - y1)*(y2 - y1) + (z2 - z1)*(z2 - z1));
+};
+
+//Fast dist3d that ignores square root for things like simple dist comparisons 
+function fDist3d(x1, y1, z1, x2, y2, z2) {
+    return (x2 - x1)*(x2 - x1) + (y2 - y1)*(y2 - y1) + (z2 - z1)*(z2 - z1);
+};
+
+function dtan(angle) {
+  let c = Math.cos(angle);
+  return c != 0 ? 1/(c*c) : 0;//return 0 when angle is zero, not mathematically correct
+};  
+
+
+  function degToRad(d) {
+    return d * Math.PI / 180;
+  }
+  
+  function rotateByYawPitch(v, yawDeg, pitchDeg) {
+    //return v;
+    const yaw = degToRad(yawDeg);
+    const pitch = degToRad(pitchDeg);
+
+    const cosY = Math.cos(pitch), sinY = Math.sin(pitch);
+    const cosX = Math.cos(yaw), sinX = Math.sin(yaw);
+
+    let [x, y, z] = v;
+
+    // Rotate around Y (yaw)
+    let x1 = (x * cosY - z * sinY);
+    let z1 = (x * sinY + z * cosY);
+
+    // Rotate around X (pitch)
+    let y1 = y + sinX;
+    z1 =  y1 * sinX + z1 * cosX;
+
+    return normalize([x1, y1, z1]);
+  }

@@ -1,0 +1,352 @@
+function mrCube(x, y, z) {
+  this.pos = new Vec3(x, y, z);
+  this.ppos = new Vec3(x, y, z);
+  this.vel = new Vec3(0, 0, 0);
+  this.relVel = new Vec3(0, 0, 0);
+  this.forwardDir = [0, 0, 1];
+  this.radius = 1;
+  this.grounded = false;
+  this.lastGravityNormal = [0, 1, 0];
+  this.gravityNormal = [0, 1, 0];
+  this.groundNormal = [0, 1, 0];
+  this.wallNormal = [0, 0, 0];
+  //this.oldYRot = 0;
+  this.targetYRot = 0;
+  this.animFactor = 0;
+  this.raisedSide = false;
+  this.spinTimer = 0;
+  this.crouching = false;
+  this.longJumping = false;
+
+  this.camera = [10.0, 0, 0, 0]//rx, ry, rz
+  this.lastDir = [1, 0];
+  this.maxSpeed = 0.4;
+  this.onWall = false;
+}
+
+
+mrCube.prototype.run = function() {
+  // Gravity setup (unchanged)
+  if (vec3.dist(this.pos, [0, 90, 0]) < 40) {
+    this.gravityNormal = vec3.normalize(vec3.subtract(this.pos, [0, 90, 0]));
+    this.camera[2] = -Math.atan2(this.pos.x, this.pos.z) + Math.PI;
+  } else {
+    this.gravityNormal = [0, 1, 0];
+  }
+
+  // Basis change handling (mostly unchanged, but using vec3 helpers)
+  if (vec3.dist(this.gravityNormal, this.lastGravityNormal) > 0.01) {
+    let oldRightVec = vec3.normalize(vec3.cross(this.forwardDir, this.lastGravityNormal));
+    let oldForwardVec = vec3.normalize(vec3.cross(this.lastGravityNormal, oldRightVec));
+
+    const currentVel = vec3.add(
+      vec3.add(
+        vec3.scale(oldForwardVec, this.relVel[2]),
+        vec3.scale(oldRightVec, -this.relVel[0])
+      ),
+      vec3.scale(this.lastGravityNormal, this.relVel[1])
+    );
+
+    // Project current forwardDir onto new gravity plane
+    let dot = vec3.dot(this.forwardDir, this.gravityNormal);
+    let projected = vec3.subtract(this.forwardDir, vec3.scale(this.gravityNormal, dot));
+    let len = vec3.length(projected);
+
+    if (len > 0.01) {
+      this.forwardDir = vec3.normalize(projected);
+    } else {
+      // Fallback direction when forward was nearly parallel to new gravity
+      let worldUp = [0, 1, 0];
+      let fallbackRight = vec3.cross(worldUp, this.gravityNormal);
+      if (vec3.length(fallbackRight) < 0.01) {
+        fallbackRight = vec3.cross([1, 0, 0], this.gravityNormal);
+      }
+      fallbackRight = vec3.normalize(fallbackRight);
+      this.forwardDir = vec3.normalize(vec3.cross(this.gravityNormal, fallbackRight));
+    }
+
+    // New basis
+    let newRightVec = vec3.normalize(vec3.cross(this.forwardDir, this.gravityNormal));
+    let newForwardVec = vec3.normalize(vec3.cross(this.gravityNormal, newRightVec));
+
+    // Re-project velocity
+    this.relVel[2] = vec3.dot(currentVel, newForwardVec);
+    this.relVel[0] = -vec3.dot(currentVel, newRightVec);
+    let oldUpVel = this.relVel[1];
+    this.relVel[1] = vec3.dot(currentVel, this.gravityNormal);
+    if (this.grounded && Math.abs(this.relVel[1] - oldUpVel) < 0.01) {
+      this.relVel[1] = oldUpVel;
+    }
+  }
+
+  this.lastGravityNormal = [...this.gravityNormal];
+
+  // ────────────────────────────────────────────────
+  // Input handling
+  // ────────────────────────────────────────────────
+
+  let jumpKey = keys[90];
+  let jumpKeyDown = keysDown[90];
+  let spinKeyDown = keysDown[88];
+  let crouchKey = keys[16];
+
+  if (controllers.length > 0) {
+    jumpKey = controllers[0].keys[0];
+    jumpKeyDown = controllers[0].keysDown[0];
+    spinKeyDown = controllers[0].keysDown[1];
+    crouchKey = controllers[0].keys[6] + controllers[0].keys[7];
+  }
+
+  // Raw input in camera space (XZ plane)
+  let rawInput = [0, 0, 0];
+  if (keys[39]) rawInput[0] -= 1;     // right
+  if (keys[37]) rawInput[0] += 1;     // left
+  if (keys[40]) rawInput[2] -= 1;     // down / backward
+  if (keys[38]) rawInput[2] += 1;     // up / forward
+
+  if (controllers.length > 0 && controllers[0].axes.length >= 4) {
+    rawInput[0] -= controllers[0].axes[0];
+    rawInput[2] -= controllers[0].axes[1];
+    if (Math.abs(rawInput[0]) < 0.1) rawInput[0] = 0;
+    if (Math.abs(rawInput[2]) < 0.1) rawInput[2] = 0;
+  }
+
+  // Rotate raw input by camera yaw (still in world XZ plane)
+  let inputDir = [
+    Math.cos(this.camera[2]) * rawInput[0] - Math.sin(this.camera[2]) * rawInput[2],
+    0,
+    Math.sin(this.camera[2]) * rawInput[0] + Math.cos(this.camera[2]) * rawInput[2]
+  ];
+
+  // ─── CRITICAL FIX ───────────────────────────────────────
+  // Project input direction onto the local tangent plane
+  // (removes any component parallel to gravity → no equator bias)
+  let inputDotUp = vec3.dot(inputDir, this.gravityNormal);
+  let tangentInput = vec3.subtract(inputDir, vec3.scale(this.gravityNormal, inputDotUp));
+
+  let inputLength = vec3.length(tangentInput);
+  if (inputLength > 0.001) {
+    tangentInput = vec3.normalize(tangentInput);
+
+    // Use this clean, gravity-perpendicular direction to update facing
+    if (this.grounded) {
+      this.forwardDir = tangentInput;
+    }
+
+    // Movement components in local character space
+    let right = vec3.normalize(vec3.cross(this.forwardDir, this.gravityNormal));
+    let forward = vec3.normalize(vec3.cross(this.gravityNormal, right));
+
+    let moveFB = vec3.dot(tangentInput, forward);
+    let moveLR = vec3.dot(tangentInput, right);  // positive = right
+
+    let accelFB = 0.02;
+    let accelLR = 0.015;
+
+    this.relVel[2] += moveFB * accelFB;
+    this.relVel[0] += moveLR * accelLR;
+  } else {
+    // No input → friction
+    if (this.grounded) {
+      this.relVel[0] *= 0.9;
+      this.relVel[2] *= 0.9;
+    }
+  }
+
+  // ────────────────────────────────────────────────
+  // Velocity clamping & friction
+  // ────────────────────────────────────────────────
+
+  let MAX_SPEED = this.maxSpeed;
+
+  this.relVel[0] = constrain(this.relVel[0], -0.3, 0.3);
+  if (this.relVel[2] > MAX_SPEED) this.relVel[2] = MAX_SPEED;
+  if (this.relVel[2] < -MAX_SPEED) this.relVel[2] = -MAX_SPEED;
+
+  if (this.grounded) {
+    this.relVel[0] = 0;  // no sliding sideways on ground (optional – remove if you want strafing)
+  }
+
+  // Gravity / jump / fall (unchanged logic)
+  if (jumpKeyDown && this.grounded) {
+    this.relVel[1] = 0.45;
+    this.grounded = false;
+  } else if (!this.grounded) {
+    if (this.relVel[1] > 0.1 && !jumpKey) {
+      this.relVel[1] = 0.1; // variable jump height
+    }
+    this.relVel[1] -= 0.015;
+    if (this.relVel[1] < -2) this.relVel[1] = -2;
+  }
+
+  // Build world velocity from relative components
+  this.vel = new Vec3(0, 0, 0);
+
+  let rightVec = vec3.normalize(vec3.cross(this.forwardDir, this.gravityNormal));
+  let forwardVec = vec3.normalize(vec3.cross(this.gravityNormal, rightVec));
+
+  let fwdMove = vec3.scale(forwardVec, this.relVel[2]);
+  let sideMove = vec3.scale(rightVec, this.relVel[0]);
+  let upMove = vec3.scale(this.gravityNormal, this.relVel[1]);
+
+  this.vel.x = fwdMove[0] + sideMove[0] + upMove[0];
+  this.vel.y = fwdMove[1] + sideMove[1] + upMove[1];
+  this.vel.z = fwdMove[2] + sideMove[2] + upMove[2];
+
+  // ────────────────────────────────────────────────
+  // Collision & grounding (unchanged)
+  // ────────────────────────────────────────────────
+
+  let totalDistance = vec3.length(this.vel);
+  let maxStepDist = Math.max(0.01, this.radius - 0.05);
+  let numSteps = Math.ceil(totalDistance / maxStepDist) || 1;
+
+  this.wallNormal = [0, 0, 0];
+
+  for (let s = 0; s < numSteps; s++) {
+    this.ppos.set(this.pos);
+    this.pos.add(vec3.scale(this.vel, 1 / numSteps));
+
+    for (let i = 0; i < 3; i++) {
+      meshCollisions(this, scene.objs);
+    }
+  }
+
+  let rcast = raycastModels(
+    scene.objs,
+    this.pos.toArray(),
+    vec3.invert(this.gravityNormal),
+    this.radius + Math.abs(this.relVel[0]) + Math.abs(this.relVel[2]) + 0.1
+  );
+
+  let prevGrounded = this.grounded;
+  this.grounded = false;
+
+  if (rcast && this.relVel[1] <= 0 && this.relVel[1] >= -0.01) {
+    this.grounded = true;
+    this.longJumping = false;
+
+    if (!prevGrounded && this.relVel[2] < 0) {
+      this.relVel[2] = 0;
+    }
+
+    let pen = rcast.distance - this.radius;
+    this.pos.x -= pen * rcast.normal[0];
+    this.pos.y -= pen * rcast.normal[1];
+    this.pos.z -= pen * rcast.normal[2];
+    this.relVel[1] = 0;
+  }
+
+  this.animFactor = this.relVel[2] / MAX_SPEED;
+};
+
+
+
+
+
+
+//DRAW
+//DRAW
+//DRAW
+
+
+
+mrCube.prototype.draw = function() {
+
+  updateBone(mrCubeModel, 0, 0, 0, 0, 0, 0);
+  if (this.grounded) {
+    if (!this.crouching) {
+      updateBone(mrCubeModel, 0, 0, (this.animFactor)  * Math.abs(Math.sin(degToRad(timer * 15))) * 0.2, 0, 0, 0);
+      updateBone(mrCubeModel, 2, 0, 0, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 3, 0, 0, 0, 0, (this.animFactor) * 70 * Math.sin(degToRad(timer * 15)), 0);
+      updateBone(mrCubeModel, 4, 0, 0, 0, 0, (this.animFactor) * 70 * Math.sin(degToRad(timer * 15)), 0);
+      updateBone(mrCubeModel, 5, 0, 0, 0, (this.animFactor) * 50 * Math.sin(degToRad(timer * 15)), 0, 0);
+      updateBone(mrCubeModel, 6, 0, 0, 0, (this.animFactor) * -50 * Math.sin(degToRad(timer * 15)), 0, 0);
+    } else {
+      updateBone(mrCubeModel, 1, 0, -0.5, 0.0, 0, 0);
+      updateBone(mrCubeModel, 2, 0, 0, 0.2, 45, 0, 0);
+      updateBone(mrCubeModel, 3, 0.2, 0, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 4, -0.2, 0, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 5, 0.05, 0.5, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 6, -0.05, 0.5, 0, 0, 0, 0);
+    }
+  } else {
+      updateBone(mrCubeModel, 2, 0, 0, 0, 0, 0, 0);
+    if (this.spinTimer <= 0 && !this.longJumping && !this.onWall) {
+      updateBone(mrCubeModel, 0, 0, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 3 + this.raisedSide, 0, -0.2, -0.5, 0, 0, 0);
+      updateBone(mrCubeModel, 4 - this.raisedSide, 0, 0.5, 0.5, 0, 0, 0);
+      updateBone(mrCubeModel, 5, 0, 0, 0, 50 - 100*this.raisedSide, 0, 0);
+      updateBone(mrCubeModel, 6, 0, 0, 0, -50 + 100*this.raisedSide, 0, 0);
+    } else if (!this.longJumping && this.spinTimer > 0) {
+      updateBone(mrCubeModel, 0, 0, 0, 0, 0, 360 - (36*(30 - this.spinTimer)));
+      updateBone(mrCubeModel, 3, -0.25, 0.1 - this.relVel[1] / 4, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 4, 0.25, 0.1- this.relVel[1] / 4, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 5, 0.3, 0, 0, 0, 0, 45 - this.relVel[1] * 5);
+      updateBone(mrCubeModel, 6, -0.3, 0, 0, 0, 0, -45 + this.relVel[1] * 5);
+    } else if (this.longJumping) {
+      updateBone(mrCubeModel, 1, 0, 0.0, 0.0, 0, 0);
+      updateBone(mrCubeModel, 2, 0, 0, -0.1, -45 * constrain(this.relVel[1] * 2, -1, 1), 0, 0);
+      updateBone(mrCubeModel, 3, -0.01, 0.1, -1.0, 0, 0, 0);
+      updateBone(mrCubeModel, 4, 0.01, 0.1, -1.0, 0, 0, 0);
+      updateBone(mrCubeModel, 5, -0.05, 0.3, 0.5, 0, 0, 0);
+      updateBone(mrCubeModel, 6, 0.05, 0.3, 0.5, 0, 0, 0);
+    } else if (this.onWall) {
+      updateBone(mrCubeModel, 0, 0, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 3 + this.raisedSide, 0, -0.3, -0.6, 0, 0, 0);
+      updateBone(mrCubeModel, 4 - this.raisedSide, 0, -0.1, 0.2, 0, 0, 0);
+      updateBone(mrCubeModel, 5, -0.1, 0, -0.6, 0, 0, 0);
+      updateBone(mrCubeModel, 6, 0.1, 0, -0.45, 0, 0, 0);
+    }
+  }
+
+
+let rightVec = vec3.normalize(vec3.cross(this.gravityNormal, this.forwardDir));
+let forwardVec = vec3.normalize(vec3.cross(rightVec, this.gravityNormal));
+let upVec = this.gravityNormal;
+
+let m = [
+  rightVec[0],   rightVec[1],   rightVec[2],   0,
+  upVec[0],      upVec[1],      upVec[2],      0,
+  forwardVec[0], forwardVec[1], forwardVec[2], 0,
+  this.pos[0],   this.pos[1],   this.pos[2],   1 
+];
+  mrCubeModel.prep(planeTexture, false);
+  gl.uniform1f(getShaderVar("u_excludeProjector"), 1.0);
+  mrCubeModel.draw(m, drawMode ? gl.TRIANGLES : gl.LINE_STRIP);
+  gl.uniform1f(getShaderVar("u_excludeProjector"), -1.0);
+
+let r = this.camera[0]; 
+let pitch = this.camera[1]; 
+let yaw = this.camera[2] - degToRad(90);   
+
+camPos[0] = this.pos.x + r * Math.cos(pitch) * Math.cos(yaw); // X
+camPos[1] = this.pos.y + r * Math.sin(pitch) + 1;                // Y (Up/Down)
+camPos[2] = this.pos.z + r * Math.cos(pitch) * Math.sin(yaw); // Z
+camPos[3] = this.camera[1] * 180/ Math.PI;
+camPos[4] = this.camera[2] * 180/ Math.PI;
+camPos[5] = this.camera[3] * 180/ Math.PI;
+
+
+
+//
+/*camPos[0] = this.pos.x + this.gravityNormal[0] * 15;
+camPos[1] = this.pos.y + this.gravityNormal[1] * 15;
+camPos[2] = this.pos.z + this.gravityNormal[2] * 15;
+
+// Direction camera → player
+const dx = this.pos.x - camPos[0];
+const dy = this.pos.y - camPos[1];
+const dz = this.pos.z - camPos[2];
+
+const yaw   = -Math.atan2(dx, dz);
+const pitch = -Math.atan2(dy, Math.sqrt(dx*dx + dz*dz));
+
+// Store in degrees
+this.camera[1] = pitch;
+this.camera[2] = yaw;
+camPos[3] = pitch * (180 / Math.PI);   // pitch
+camPos[4] = yaw   * (180 / Math.PI);   // yaw
+camPos[5] = 0;*/
+  
+}

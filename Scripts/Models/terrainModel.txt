@@ -1,0 +1,88 @@
+let terrainModel = new model();
+
+function initTerrainModel() {
+  let terrainModelW = 250;
+  let terrainModelH = 250;
+  let scaler = 50;
+  terrainModelW /= scaler;
+  terrainModelH /= scaler;
+  let heightMap = [];
+  for (let i = 0; i < terrainModelW; i++) {
+    heightMap[i] = [];
+    for (let j = 0; j < terrainModelH; j++) {
+      heightMap[i][j] = dist3d(i, 0, j, terrainModelW / 2, 0, terrainModelH / 2) * 20;
+    }
+  }
+  
+  for (let i = 0; i < terrainModelW; i++) {
+    for (let j = 0; j < terrainModelH; j++) {
+      terrainModel.verts.push((-(terrainModelW / 2) + i) * scaler, -20 + heightMap[i][j], (-(terrainModelH / 2) + j) * scaler);
+    }
+  }
+
+  //let finalVert = (terrainModel.verts.length / 3);
+  //terrainModel.verts.push(0, -50, 0);
+
+  let edgeTris = [];
+  let edgeTris2 = [];
+  for (let i = 0; i < terrainModelW - 1; i++) {
+    for (let j = 0; j < terrainModelH - 1; j++) {
+      let a1 = i;
+      let a2 = i+1;
+      let a3 = i+terrainModelH;
+      let a4 = i+1+terrainModelH;
+      a1 += j*terrainModelH;
+      a2 += j*terrainModelH;
+      a3 += j*terrainModelH;
+      a4 += j*terrainModelH;
+      terrainModel.tris.push(a1, a2, a3, a3, a2, a4);
+      if (i == 0 && j > 0) {
+        edgeTris.push(a1);
+      } else if (i == terrainModelW - 2 && j > 0) {
+        edgeTris.push(a2);
+      }
+
+      if (j == 0) {
+        edgeTris.push(a1);
+      } else if (j == terrainModelH - 2) {
+        edgeTris2.push(a3);
+      }
+
+      if (j == terrainModelH - 2 && i == terrainModelW - 2) {
+        edgeTris.push(a4);
+      }
+    }
+  }
+
+  for (let i = 0; i < edgeTris2.length; i++) {
+    //edgeTris.push(edgeTris2[i]);
+  }
+  /*for (let i = 0; i < edgeTris.length - 1; i++) {
+    terrainModel.tris.push(edgeTris[i], edgeTris[i + 1],  finalVert);
+  }*/
+  
+  
+  
+  
+  
+  
+  for (let i = 0; i < terrainModel.verts.length / 3; i++) {
+    terrainModel.colors.push(0,192 + Math.random() * 64, 0);
+    terrainModel.boneIDs.push(0,0,0,0);
+    terrainModel.boneWeights.push(1.0,0.0,0.0,0.0);
+    //terrainModel.texcoords.push(0.0,0.0);
+  }
+  
+  
+  terrainModel.bones = [
+  {children:[], curPos:m4.identity(), binvPos:m4.identity()},
+  ];
+  
+  terrainModel.bones[0].curPos = m4.translate(terrainModel.bones[0].curPos, 0.0, 0.0, 0.0);
+  for (let i = 0; i < terrainModel.bones.length; i++) {
+    terrainModel.bones[i].binvPos = m4.inverse(terrainModel.bones[i].curPos);
+  }
+}
+initTerrainModel();
+
+terrainModel.typify();

@@ -1,0 +1,72 @@
+let sphereModel = new model();
+function initSphereModel() {
+  let latSegments = 24*2; // Vertical resolution
+  let lonSegments = 24*2; // Horizontal resolution
+  let radius = 1;
+  
+  // 1. Generate Vertices, UVs, and Colors
+  for (let lat = 0; lat <= latSegments; lat++) {
+      let theta = (lat * Math.PI) / latSegments; // From 0 to PI
+      let sinTheta = Math.sin(theta);
+      let cosTheta = Math.cos(theta);
+  
+      for (let lon = 0; lon <= lonSegments; lon++) {
+          let phi = (lon * 2 * Math.PI) / lonSegments; // From 0 to 2PI
+          let sinPhi = Math.sin(phi);
+          let cosPhi = Math.cos(phi);
+  
+          // Spherical coordinate math
+          let x = cosPhi * sinTheta;
+          let y = cosTheta; // Y is "up" in this coordinate system
+          let z = sinPhi * sinTheta;
+  
+          // Position
+          //sphereModel.verts.push(x * radius, y * radius, z * radius);//face inward
+          sphereModel.verts.push(x * radius, y * radius, z * radius);//face outward
+
+            // Normal = normalized position vector (perfect for sphere)
+            let nx = x / radius;
+            let ny = y / radius;
+            let nz = z / radius;
+            sphereModel.normals.push(nx, ny, nz);
+  
+          // Texcoords (U from 0-1, V from 0-1)
+          // We can multiply by 10 here to match your plane's tiling style
+          sphereModel.texcoords.push((lon / lonSegments) * 10, (lat / latSegments) * 10);
+  
+          // Colors
+          sphereModel.colors.push(255, 255, 255);
+          
+          // Rigging data (100% weight to the only bone)
+          sphereModel.boneIDs.push(0, 0, 0, 0);
+          sphereModel.boneWeights.push(1.0, 0.0, 0.0, 0.0);
+      }
+  }
+  
+  // 2. Generate Triangles (Indices)
+  for (let lat = 0; lat < latSegments; lat++) {
+      for (let lon = 0; lon < lonSegments; lon++) {
+          let first = (lat * (lonSegments + 1)) + lon;
+          let second = first + lonSegments + 1;
+  
+          // Two triangles per grid square
+          sphereModel.tris.push(first, first+1, second);
+          sphereModel.tris.push(second, first+1, second + 1);
+      }
+  }
+  
+  // 3. Setup Bone Hierarchy
+  sphereModel.bones = [{
+      children: [], 
+      parent: -1, 
+      locoldPos: m4.identity(), 
+      localPos: m4.translation(0.0, 0.0, 0.0), 
+      curPos: m4.identity(), 
+      binvPos: m4.identity()
+  }];
+  
+  // 4. Finalize
+  computeBindMatrices(sphereModel, 0, m4.identity());
+  sphereModel.typify();
+};
+initSphereModel();

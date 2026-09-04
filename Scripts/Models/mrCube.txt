@@ -1,0 +1,81 @@
+
+let mrCubeModel = new model();
+pushFlatBoxOntoModel(mrCubeModel, 0, 0.1, 0, 0.5, 0.5, 0.5, [2,0,0,0], [1.0,0.0,0.0,0.0]);//head
+pushFlatBoxOntoModel(mrCubeModel, 0, -1, 0, 0.35, 0.35, 0.35, [1,0,0,0], [1.0,0.0,0.0,0.0]);//body
+pushFlatBoxOntoModel(mrCubeModel, -1.1, -1, 0, 0.3, 0.3, 0.3, [3,0,0,0], [1.0,0.0,0.0,0.0]);//hand
+pushFlatBoxOntoModel(mrCubeModel, 1.1 , -1, 0, 0.3, 0.3, 0.3, [4,0,0,0], [1.0,0.0,0.0,0.0]);//hand
+pushFlatBoxOntoModel(mrCubeModel, -0.4, -2, 0, 0.3, 0.3, 0.3, [5,0,0,0], [1.0,0.0,0.0,0.0]);//foot
+pushFlatBoxOntoModel(mrCubeModel, 0.4, -2, 0, 0.3, 0.3, 0.3, [6,0,0,0], [1.0,0.0,0.0,0.0]);//foot
+
+
+for (let i = 0; i < mrCubeModel.verts.length / 3; i++) {
+  mrCubeModel.colors.push(255,255,255);
+  //boxmanModel.texcoords.push(0, 0);
+}
+
+let vc_qwerty = mrCubeModel.verts.length / 3;
+pushFlatBoxOntoModel(mrCubeModel, -0.2, 0.1, 0.41, 0.1, 0.3, 0.1, [2,0,0,0], [1.0,0.0,0.0,0.0]);//head
+pushFlatBoxOntoModel(mrCubeModel, 0.2, 0.1, 0.41, 0.1, 0.3, 0.1, [2,0,0,0], [1.0,0.0,0.0,0.0]);//head
+
+for (let i = vc_qwerty; i < mrCubeModel.verts.length / 3; i++) {
+  mrCubeModel.colors.push(0,0,0);
+  //boxmanModel.texcoords.push(0, 0);
+}
+
+//outter inverted layer
+/*let vCountBefore = mrCubeModel.verts.length / 3; // Number of vertex triplets
+let tL = mrCubeModel.tris.length;
+
+for (let i = 0; i < vCountBefore * 3; i++) {
+  mrCubeModel.verts.push(mrCubeModel.verts[i] * 1.1);
+}
+
+for (let i = 0; i < tL; i += 3) {
+  mrCubeModel.tris.push(
+  mrCubeModel.tris[i] + vCountBefore,
+  mrCubeModel.tris[i+2] + vCountBefore,
+  mrCubeModel.tris[i+1] + vCountBefore
+  );
+}
+
+let bL = mrCubeModel.boneIDs.length;
+for (let i = 0; i < bL; i++) {
+  mrCubeModel.boneIDs.push(mrCubeModel.boneIDs[i]);
+  mrCubeModel.boneWeights.push(mrCubeModel.boneWeights[i]);
+}
+
+
+for (let i = vCountBefore; i < mrCubeModel.verts.length / 3; i++) {
+  mrCubeModel.colors.push(0,0,0);
+  //boxmanModel.texcoords.push(0, 0);
+}*/
+
+for (let i = 0; i < mrCubeModel.verts.length; i += 3) {
+  mrCubeModel.verts[i + 1] += 1.3;
+}
+
+mrCubeModel.typify();
+
+mrCubeModel.bones = [
+{children:[1], parent:-1, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},//origin
+{children:[2,3,4,5,6], parent:0, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},//body
+{children:[], parent:1, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},//head
+{children:[], parent:1, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},//hand
+{children:[], parent:1, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},//hand
+{children:[], parent:1, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},//foot
+{children:[], parent:1, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()},//foot
+];
+
+mrCubeModel.bones[0].localPos = m4.translation(0, 0, 0);
+mrCubeModel.bones[1].localPos = m4.translation(0, 0.3, 0);
+mrCubeModel.bones[2].localPos = m4.translation(0, 0.85, 0);
+mrCubeModel.bones[3].localPos = m4.identity(); 
+mrCubeModel.bones[4].localPos = m4.identity();
+mrCubeModel.bones[5].localPos = m4.identity();
+mrCubeModel.bones[6].localPos = m4.identity();
+
+computeBindMatrices(mrCubeModel, 0, m4.identity());
+
+
+
+

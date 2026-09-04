@@ -1,0 +1,215 @@
+//838 triangles for M64
+//14375 triangles for MOd
+
+let vordasModel = new model();
+
+//head and body
+function initVordasModel() {
+  //root
+  addBone(vordasModel, -1, m4.translation(0.0, 0.0, 0.0));
+  //head
+  addBone(vordasModel, 0, m4.translation(0.0, -9.5, 0.0));//body
+  addBone(vordasModel, 1, m4.translation(0.0, 7.5, 0.0));//#8 and #9 n stuff, neck
+  addBone(vordasModel, 1, m4.translation(0.0, -0, 1.6));//leg
+  addBone(vordasModel, 3, m4.translation(0.0, -2.75, 0.0));//kneecap
+  addBone(vordasModel, 1, m4.translation(0.0, -0, -1.6));//leg
+  addBone(vordasModel, 5, m4.translation(0.0, -2.75, 0.0));//kneecap
+  let Ns = [1, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, /*9,*/ 1];
+  for (let i = 0; i < Ns.length; i++) {if (Ns[i] > 0) {Ns[i]++;}}
+  let yp = [4.5, 4.0, 3.5, 3.0, 2.0, -0.5, -1.0, -1.5, -2.0, -2.0, -2.25 , -2.5,-3.0, -8.5, -9.0,-9.0, /*-9.25,-9.25,*/ -9.5];
+  let zs = [0.0, 0.6, 0.85, 0.95, 1.0, 1.0, 0.95, 0.85, 0.6, 0.6, 0.8 , 1.0,0.95, 0.95, 0.85,0.85, /*0.8,0.8,*/ 0.0];
+  
+  let qwer = [];
+  for (let i = 0; i < Ns.length; i++) {
+    qwer.push({
+      count:Ns[i],
+      centerX:0,
+      centerY:yp[i],
+      centerZ:0,
+      radius:zs[i]
+    });
+  }
+
+  
+  let lemax = qwer.length - 1;
+  let pvordVert = 0;
+  for (let k = 0; k < lemax; k++) {
+    vordasModel.rings.push(genRing(vordasModel,qwer[k].count, 0,qwer[k].centerY,0, qwer[k].radius* 4.0,qwer[k].radius* 4.0, 0,0,0, 0));
+
+    
+    //need a more automated way of doing this...
+    if (k == 9) {
+      for (let i = pvordVert; i < vordasModel.verts.length / 3; i++) {
+        vordasModel.boneIDs.push(2,0,0,0);
+        vordasModel.boneWeights.push(1.0,0.0,0.0,0.0);
+      }
+      pvordVert = vordasModel.verts.length / 3;
+    } else if (k == lemax - 1) {
+      for (let i = pvordVert; i < vordasModel.verts.length / 3; i++) {
+        vordasModel.boneIDs.push(1,0,0,0);
+        vordasModel.boneWeights.push(1.0,0.0,0.0,0.0);
+      }
+      pvordVert = vordasModel.verts.length / 3;
+    }
+  }
+  //alert(rings[0] + ", \n" + rings[1]);
+  
+  //merge rings
+  for (let k = 1; k < vordasModel.rings.length; k++) {
+    if (k == 9 || k == 15) {continue;}
+    connectRings(vordasModel, k - 1, k);
+  }
+  
+  
+  //torso
+  //console.log("torso: " + rings[rings.length - 1]);
+  let torsoRing = vordasModel.rings[vordasModel.rings.length - 1];
+  let torsoRingL = [];
+  let torsoRingR = [];
+  
+  let start = 1;
+  let midpoint = 6;
+  
+  let offset1234 = -1;
+  start += offset1234;
+  midpoint += offset1234;
+  
+  for (let i = start; i < midpoint + 1; i++) {
+    //console.log(rings[rings.length - 1][i] + "L");
+    torsoRingL.push(vordasModel.rings[vordasModel.rings.length - 1][i]);
+  }
+  //Problem: connectRings is based on orientation of rings
+  //Solution: allow for rign rotation of sorts, or auto-orient
+  for (let i = midpoint; i < vordasModel.rings[vordasModel.rings.length - 1].length + 1 + start; i++) {
+    //console.log(rings[rings.length - 1][i % rings[rings.length - 1].length] + "R");
+    torsoRingR.push(vordasModel.rings[vordasModel.rings.length - 1][i % vordasModel.rings[vordasModel.rings.length - 1].length]);
+  }
+  
+  //PROBLEM: Rings can connect/collidge through other rings: need ear clip alogrithm
+  
+  
+  //legs
+  vordasModel.rings.push(genRing(vordasModel, 5, -0.0,-9.5,1.6, 0.35* 4.0,0.35* 4.0, 0,0,0, 0));
+  vordasModel.rings.push(genRing(vordasModel, 5, -0.0,-9.5,1.6, 0.35* 4.0,0.35* 4.0, 0,0,0, 0));
+  let curRingA = vordasModel.rings.length - 2;
+  
+      for (let i = pvordVert; i < vordasModel.verts.length / 3; i++) {
+        vordasModel.boneIDs.push(3,0,0,0);
+        vordasModel.boneWeights.push(1.0,0.0,0.0,0.0);
+      }
+      pvordVert = vordasModel.verts.length / 3;
+  vordasModel.rings.push(genRing(vordasModel, 9, -0.0,-12.25,1.6, 0.35* 4.0,0.35* 4.0, 0,0,0, -0));
+  connectRings(vordasModel);
+  vordasModel.rings.push(genRing(vordasModel, 9, -0.0,-15.5,1.6, 0.35* 4.0,0.35* 4.0, 0,0,0, -0));
+  connectRings(vordasModel);
+  vordasModel.rings.push(genRing(vordasModel, 9, -0.0,-16.5,1.6, 0.4* 4.0,0.4* 4.0, 0,0,0, -0));
+  //foot
+  for (let i = (vordasModel.verts.length / 3) - 9; i < vordasModel.verts.length / 3; i++) {
+    if (vordasModel.verts[i * 3] < 0) {vordasModel.verts[i * 3] *= 3;}
+  }
+  connectRings(vordasModel);
+  vordasModel.rings.push(genRing(vordasModel, 9, -0.0,-16.5,1.6, 0.4* 4.0,0.4* 4.0, 0,0,0, -0));
+  //sole
+  for (let i = (vordasModel.verts.length / 3) - 9; i < vordasModel.verts.length / 3; i++) {
+    if (vordasModel.verts[i * 3] < 0) {vordasModel.verts[i * 3] *= 3;}
+  }
+  earclipRings(vordasModel, vordasModel.rings[vordasModel.rings.length - 1], []);
+
+      for (let i = pvordVert; i < vordasModel.verts.length / 3; i++) {
+        vordasModel.boneIDs.push(4,0,0,0);
+        vordasModel.boneWeights.push(1.0,0.0,0.0,0.0);
+      }
+      pvordVert = vordasModel.verts.length / 3;
+  
+  vordasModel.rings.push(genRing(vordasModel,5, -0.0,-9.5,-1.6, 0.35* 4.0,0.35* 4.0, 0,0,0, 0));
+  vordasModel.rings.push(genRing(vordasModel,5, -0.0,-9.5,-1.6, 0.35* 4.0,0.35* 4.0, 0,0,0, 0));
+  
+  let curRingB = vordasModel.rings.length - 2;
+  
+      for (let i = pvordVert; i < vordasModel.verts.length / 3; i++) {
+        vordasModel.boneIDs.push(5,0,0,0);
+        vordasModel.boneWeights.push(1.0,0.0,0.0,0.0);
+      }
+      pvordVert = vordasModel.verts.length / 3;
+  vordasModel.rings.push(genRing(vordasModel,9, 0.0,-12.25,-1.6, 0.35* 4.0,0.35* 4.0, 0,0,0, 0));
+  connectRings(vordasModel);
+  vordasModel.rings.push(genRing(vordasModel,9, 0.0,-15.5,-1.6, 0.35* 4.0,0.35* 4.0, 0,0,0, 0));
+  connectRings(vordasModel);
+  vordasModel.rings.push(genRing(vordasModel,9, -0.0,-16.5,-1.6, 0.4* 4.0,0.4* 4.0, 0,0,0, 0));
+  //foot
+  for (let i = (vordasModel.verts.length / 3) - 9; i < vordasModel.verts.length / 3; i++) {
+    if (vordasModel.verts[i * 3] < 0) {vordasModel.verts[i * 3] *= 3;}
+  }
+  connectRings(vordasModel);
+  vordasModel.rings.push(genRing(vordasModel,9, -0.0,-16.5,-1.6, 0.4* 4.0,0.4* 4.0, 0,0,0, 0));
+  //sole
+  for (let i = (vordasModel.verts.length / 3) - 9; i < vordasModel.verts.length / 3; i++) {
+    if (vordasModel.verts[i * 3] < 0) {vordasModel.verts[i * 3] *= 3;}
+  }
+  earclipRings(vordasModel, vordasModel.rings[vordasModel.rings.length - 1], []);
+  
+  //earclipRings(vordasModel, vordasModel.rings[vordasModel.rings.length - 1], []);
+  
+      for (let i = pvordVert; i < vordasModel.verts.length / 3; i++) {
+        vordasModel.boneIDs.push(6,0,0,0);
+        vordasModel.boneWeights.push(1.0,0.0,0.0,0.0);
+      }
+      pvordVert = vordasModel.verts.length / 3;
+  //Torso
+  earclipRings(vordasModel, torsoRing, [vordasModel.rings[curRingA], vordasModel.rings[curRingB]]);
+  
+  
+  //arms and hands
+  yp = [2.0, 2.5, 3.5, 5.75, 8.0, 8.5, 9.0, 10.0, 10.5, 11];
+  zs = [0.5, 0.5, 0.4, 0.4, 0.4, 0.35, 0.4, 0.4, 0.35, 0];
+  let vcs = [7, 7, 7, 7, 7, 5, 7, 7, 5, 1];
+  lemax = 9;
+  let lemin = vordasModel.rings.length;
+  for (let l = 0; l < 2; l++) {
+    let k2 = 0;
+    for (let k = lemin; k <= lemin + lemax; k++) {
+      vordasModel.rings.push(genRing(vordasModel, vcs[k2], 0,-4.25,(yp[k2]+1.0) * ((l == 1) ? -1 : 1), zs[k2]*4.0,zs[k2]*4.0, -90,0,0, 0/*(k2 % 2) * -45*/));
+      if (k > lemin) {connectRings(vordasModel, vordasModel.rings.length - 2, vordasModel.rings.length - 1, 0, 0, l);}
+      k2++;
+    }
+  }
+  
+  //vordasModel.rings.push([], [], [], [], [], []);
+  //shoulder attempt
+  /*yp = [2.0, 2.5, 3.5, 5.75, 8.0, 8.5, 9.0, 10.0, 10.5, 11];
+  zs = [0.5, 0.5, 0.4, 0.4, 0.4, 0.35, 0.4, 0.4, 0.35, 0];
+  let vcs = [7, 7, 7, 7, 7, 5, 7, 7, 5, 1];
+  let roters = [35, 20, 10, 0, 0, 0, 0, 0, 0, 0];
+  lemax = 8;
+  let lemin = vordasModel.rings.length;*/
+  //for (let l = 0; l < 2; l++) {
+    //let k2 = 0;
+    //for (let k = lemin; k <= lemin + lemax; k++) {
+      //vordasModel.rings.push(genRing(vordasModel, vcs[k2], 0,-4.5,yp[k2] * ((l == 1) ? -1 : 1), zs[k2]*4.0,zs[k2]*4.0, -90,0,0, 0/*(k2 % 2) * -45*/));
+      //vordasModel.rings.push(genRing(vordasModel, vcs[k2], 0,-yp[k2],-5.5 * ((l == 1) ? -1 : 1), zs[k2]*4.0,zs[k2]*4.0, roters[k2] * ((l == 1) ? -1 : 1),0,0, 0/*(k2 % 2) * -45*/));
+      //if (k > lemin) {connectRings(vordasModel, vordasModel.rings.length - 2, vordasModel.rings.length - 1, 0, 0, /*l*/0);}
+      //k2++;
+    //}
+  //}
+  
+  
+  //earclipRings(vordasModel, torsoRing, [vordasModel.rings[curRingA], vordasModel.rings[curRingB]]);
+
+  //connectRings(vordasModel, torsoRingL, curRingA);
+  //connectRings(vordasModel, torsoRingR, curRingB, 2);
+
+  for (let i = 0 + (vordasModel.boneIDs.length / 4); i < vordasModel.verts.length / 3; i++) {
+      vordasModel.boneIDs.push(0,0,0,0);
+      vordasModel.boneWeights.push(1.0,0.0,0.0,0.0);
+      //vordasModel.texcoords.push(0.0, 0.0);
+  }
+
+  //vordasModel.bones = [{children:[], parent:-1, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()}];
+  //vordasModel.bones[0].localPos = m4.translation(0.0, 0.0, 0.0);
+  //alert(vordasModel.bones.length);
+  
+  computeBindMatrices(vordasModel, 0, m4.identity());
+  vordasModel.typify();
+}
+
+initVordasModel();

@@ -1,0 +1,35 @@
+let planeModel = new model();
+
+planeModel.verts = [
+-0.5, 0.0, -0.5,
+0.5, 0.0, -0.5,
+-0.5, 0.0, 0.5,
+0.5, 0.0, 0.5,
+];
+
+planeModel.tris = [
+0,2,1,
+2,3,1
+];//indices[0, 1, 2]
+
+
+planeModel.texcoords = [
+  0, 0,
+  1, 0,
+  0, 1,
+  1, 1
+];
+for (let i = 0; i < planeModel.verts.length / 3; i++) {
+  planeModel.colors.push(255,255,255);
+}
+for (let i = 0; i < planeModel.texcoords.length; i++){planeModel.texcoords[i] *= 10;}
+for (let i = 0; i < planeModel.verts.length; i++){planeModel.verts[i] *= 100;}
+
+  for (let i = 0; i < planeModel.verts.length / 3; i++) {
+      planeModel.boneIDs.push(0,0,0,0);
+      planeModel.boneWeights.push(1.0,0.0,0.0,0.0);
+  }
+  planeModel.bones = [{children:[], parent:-1, locoldPos:m4.identity(), localPos:m4.identity(), curPos:m4.identity(), binvPos:m4.identity()}];
+  planeModel.bones[0].localPos = m4.translation(0.0, 0.0, 0.0);
+  computeBindMatrices(planeModel, 0, m4.identity());
+planeModel.typify();

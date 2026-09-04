@@ -1,0 +1,42 @@
+"use strict"
+let tooMuchFPS = false;
+var runGameTimer = 0;
+var fpsNow = window.performance.now();
+var fpsThen = window.performance.now();
+let updateFrequency = 1;
+let updateTimer = 0;
+let updateFrequency2 = 1;
+let updateTimer2 = 0;
+function doFPSCapStuff() {
+    fpsNow = window.performance.now();
+    if (fpsNow - fpsThen >= 1000 / (60)) {
+        fpsThen = fpsNow - ((fpsNow - fpsThen) % (1000 / (60)));
+        requestAnimationFrame(fixedRun);
+    }
+
+    updateTimer++;
+    updateTimer %= updateFrequency;
+    if (updateTimer == 0) {requestAnimationFrame(run);}
+    requestAnimationFrame(doFPSCapStuff);
+};
+
+function doRun() {
+  if (tooMuchFPS) {
+    doFPSCapStuff();
+  } else {
+    updateTimer2++;
+    updateTimer2 %= updateFrequency2;
+    if (updateTimer2 == 0) {fixedRun();}
+    updateTimer++;
+    updateTimer %= updateFrequency;
+    if (updateTimer == 0) {run();}
+    requestAnimationFrame(doRun);
+  }
+}
+  
+try {
+  doRun();
+} catch(e) {
+  console.log(e);
+  alert(e);
+}

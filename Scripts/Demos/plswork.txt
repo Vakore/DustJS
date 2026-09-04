@@ -1,0 +1,423 @@
+function mrCube(x, y, z) {
+  this.pos = new Vec3(x, y, z);
+  this.ppos = new Vec3(x, y, z);
+  this.vel = new Vec3(0, 0, 0);
+  this.relVel = [0, 0, 0];
+  this.radius = 1;
+  this.grounded = false;
+  this.lastGravityNormal = [0, 1, 0];
+  this.gravityNormal = [0, 1, 0];
+  this.groundNormal = [0, 1, 0];
+  this.wallNormal = [0, 0, 0];
+  this.yRot = 0;
+  //this.oldYRot = 0;
+  this.targetYRot = 0;
+  this.animFactor = 0;
+  this.raisedSide = false;
+  this.spinTimer = 0;
+  this.crouching = false;
+  this.longJumping = false;
+  this.camera = [10.0, 0, 0, 0]//rx, ry, rz
+  this.lastDir = [1, 0];
+  this.maxSpeed = 0.4;
+  this.onWall = false;
+}
+mrCube.prototype.run = function() {
+//console.log(vec3.dist(this.pos, [0, 90, 0]));
+  if (vec3.dist(this.pos, [0, 90, 0]) < 40) {
+    this.gravityNormal = vec3.normalize(vec3.subtract(this.pos, [0, 90, 0]));
+  } else {
+    this.gravityNormal = [0, 1, 0];
+  }
+  if (vec3.dist(this.gravityNormal, this.lastGravityNormal) > 0.01) {
+    const oldReferenceLook = [Math.sin(this.yRot), 0, Math.cos(this.yRot)];
+    let oldRightVec = vec3.normalize(vec3.cross(oldReferenceLook, this.lastGravityNormal));
+    let oldForwardVec = vec3.normalize(vec3.cross(this.lastGravityNormal, oldRightVec));
+   
+    // Get current world-space velocity from old components
+    const currentVel = [
+        oldForwardVec[0] * this.relVel[2] - oldRightVec[0] * this.relVel[0] + this.lastGravityNormal[0] * this.relVel[1],
+        oldForwardVec[1] * this.relVel[2] - oldRightVec[1] * this.relVel[0] + this.lastGravityNormal[1] * this.relVel[1],
+        oldForwardVec[2] * this.relVel[2] - oldRightVec[2] * this.relVel[0] + this.lastGravityNormal[2] * this.relVel[1]
+    ];
+   
+   
+    // Calculate NEW basis vectors
+    const newReferenceLook = [Math.sin(this.yRot), 0, Math.cos(this.yRot)];
+    let dot = vec3.dot(newReferenceLook, this.gravityNormal);
+    let projected = vec3.subtract(newReferenceLook, vec3.scale(this.gravityNormal, dot));
+    let projLen = vec3.length(projected);
+    if (projLen < 0.01) {
+      projected = vec3.perpendicularAny(this.gravityNormal);
+    }
+    projected = vec3.normalize(projected);
+    let newRightVec = vec3.normalize(vec3.cross(projected, this.gravityNormal));
+    let newForwardVec = vec3.normalize(vec3.cross(this.gravityNormal, newRightVec));
+   
+    // Project world velocity onto new basis
+    this.relVel[2] = vec3.dot(currentVel, newForwardVec);
+    this.relVel[0] = -vec3.dot(currentVel, newRightVec); // negative because sideMove is subtracted
+    let oldUpVel = this.relVel[1];
+    this.relVel[1] = vec3.dot(currentVel, this.gravityNormal);
+    if (this.grounded && Math.abs(this.relVel[1] - oldUpVel) < 0.01) {this.relVel[1] = oldUpVel;}
+  }
+ 
+  this.lastGravityNormal = [this.gravityNormal[0], this.gravityNormal[1], this.gravityNormal[2]];
+ 
+ 
+  let jumpKey = keys[90];
+  let jumpKeyDown = keysDown[90];
+  let spinKeyDown = keysDown[88];
+  let crouchKey = keys[16];
+  if (controllers.length > 0) {
+    jumpKey = controllers[0].keys[0];
+    jumpKeyDown = controllers[0].keysDown[0];
+    spinKeyDown = controllers[0].keysDown[1];
+    //console.log(controllers[0].axes + "\n" + controllers[0].keys);
+    crouchKey = controllers[0].keys[6] + controllers[0].keys[7];
+  }
+  if (keys[65]) {this.camera[2] -= degToRad(3);}
+  if (keys[68]) {this.camera[2] += degToRad(3);}
+  if (keys[87]) {this.camera[1] -= degToRad(3);}
+  if (keys[83]) {this.camera[1] += degToRad(3);}
+  if (controllers.length > 0 && controllers[0].axes.length >= 4) {
+    this.camera[2] += degToRad(3) * controllers[0].axes[2];
+    this.camera[1] += degToRad(3) * controllers[0].axes[3];
+  }
+  if (this.spinTimer > 20 || this.grounded && this.spinTimer > 0) {this.spinTimer--;}
+  if (!this.grounded) {
+    //this.gravityNormal = [0, -1, 0];
+    this.groundNormal = [this.gravityNormal[0], this.gravityNormal[1], this.gravityNormal[2]];
+  } else if (this.maxSpeed > 0.4 && this.grounded) {
+    this.maxSpeed = (this.maxSpeed - 0.4) * 0.9 + 0.4;
+  }
+  let MAX_SPEED = this.maxSpeed;
+let ballSpeed = 0.02;
+let ballDir = [0,0];
+if (keys[39]) ballDir[0] -= 1;
+if (keys[37]) ballDir[0] += 1;
+if (keys[40]) ballDir[1] -= 1;
+if (keys[38]) ballDir[1] += 1;
+if (controllers.length > 0 && controllers[0].axes.length >= 4) {
+  ballDir[0] -= controllers[0].axes[0];
+  ballDir[1] -= controllers[0].axes[1];
+  //console.log(ballDir);
+  if (Math.abs(ballDir[0]) < 0.1) {ballDir[0] = 0;}
+  if (Math.abs(ballDir[1]) < 0.1) {ballDir[1] = 0;}
+}
+//this.angle1 = Math.atan2(ballDir[0], ballDir[1]);
+if (this.grounded && (ballDir[0] != 0 || ballDir[1] != 0)) {
+  this.lastDir[0] = ballDir[0] * Math.cos(this.camera[2]) + ballDir[1] * Math.sin(-this.camera[2]);
+  this.lastDir[1] = ballDir[1] * Math.cos(-this.camera[2]) + ballDir[0] * Math.sin(this.camera[2]);
+  let inputWorld = [this.lastDir[0], 0, this.lastDir[1]];
+  let dot = vec3.dot(inputWorld, this.gravityNormal);
+  let projectedInput = vec3.subtract(inputWorld, vec3.scale(this.gravityNormal, dot));
+  let projLen = vec3.length(projectedInput);
+  if (projLen > 0.01) {
+    projectedInput = vec3.normalize(projectedInput);
+    this.targetYRot = Math.atan2(projectedInput[0], projectedInput[2]);
+  }
+} else {
+  this.targetYRot = this.yRot;
+}
+if (!this.crouching) {
+  if (this.grounded) {
+    this.relVel[2] += ballSpeed * Math.min((Math.abs(ballDir[0]) + Math.abs(ballDir[1])), 1);
+    this.relVel[0] = 0;
+  } else {
+    let adderF = ballSpeed * (ballDir[0] * Math.sin(this.camera[2] + this.yRot) + ballDir[1] * Math.cos(this.camera[2] + this.yRot));
+    if (adderF > ballSpeed) {adderF = ballSpeed;}
+    this.relVel[2] += adderF;
+    //console.log(adderF);
+    let adderS = ballSpeed * (ballDir[0] * Math.cos(this.camera[2] + this.yRot) - ballDir[1] * Math.sin(this.camera[2] + this.yRot));
+    //adderS = ballDir[0] * ballSpeed;
+    if (this.relVel[0] > MAX_SPEED / 2) {this.relVel[0] = MAX_SPEED / 2;}
+    if (this.relVel[0] < -MAX_SPEED / 2) {this.relVel[0] = -MAX_SPEED / 2;}
+    this.relVel[0] += adderS;
+    //console.log(adderS);
+   
+    //this.relVel[0] += ballSpeed * (ballDir[0] * Math.cos(-this.camera[2] + this.yRot) + ballDir[1] * Math.sin(-this.camera[2] + this.yRot));
+  }
+} else {
+  this.relVel[2] *= 0.95;
+  this.relVel[0] *= 0.95;
+}
+if (this.relVel[2] > MAX_SPEED) {this.relVel[2] = MAX_SPEED;}
+if (this.relVel[2] < -MAX_SPEED) {this.relVel[2] = -MAX_SPEED;}
+//if (this.relVel[2] < 0.01) {this.relVel[2] = 0;this.targetYRot = this.yRot;}
+if (ballDir[0] == 0 && ballDir[1] == 0) {
+  if (this.grounded) {
+    this.relVel[2] *= 0.9;
+  } else {
+    //this.relVel[2] *= 0.95;
+  }
+} else if (this.grounded) {
+  //this.yRot = -degToRad(this.camera[4]) + Math.atan2(ballDir[0], ballDir[1]);
+  //this.targetYRot = Math.atan2(this.vel.x, this.vel.z);
+}
+if ((this.wallNormal[0] != 0 || this.wallNormal[1] != 0 || this.wallNormal[2] != 0) && this.relVel[1] <= 0 && !this.grounded) {
+  this.onWall = true;
+  this.spinTimer = 0;
+  this.longJumping = false;
+  this.relVel[2] = -0.2;
+  const upX = this.gravityNormal[0];
+  const upY = this.gravityNormal[1];
+  const upZ = this.gravityNormal[2];
+  // 2. Project wallNormal onto the plane perpendicular to Up
+  // This removes the "slope" of the wall relative to your gravity
+  const dot = this.wallNormal[0] * upX + this.wallNormal[1] * upY + this.wallNormal[2] * upZ;
+ 
+  const planeX = this.wallNormal[0] - dot * upX;
+  const planeZ = this.wallNormal[2] - dot * upZ;
+  // 3. Set yRot based on the projected horizontal components
+  // Note: Use atan2(x, z) for most 3D engines to get the Yaw
+  this.yRot = Math.atan2(planeX, planeZ);
+  // Optional: If you want to move when 'Z' is pressed
+  if (jumpKeyDown) {
+      this.relVel[2] = 0.5; // Or your desired wall-kick/climb speed
+      this.relVel[0] = 0;
+      this.relVel[1] = 0.4;
+      this.longJumping = false;
+  }
+} else {
+  this.onWall = false;
+}
+///
+// 1. Reset velocity
+this.vel.x = this.vel.y = this.vel.z = 0;
+// 2. Define a "Global Reference" look direction based on rotation
+// We assume 'forward' on a flat map would be this:
+let referenceLook = [Math.sin(this.yRot), 0, Math.cos(this.yRot)];
+let dot = vec3.dot(referenceLook, this.gravityNormal);
+let projectedLook = vec3.subtract(referenceLook, vec3.scale(this.gravityNormal, dot));
+let projLen = vec3.length(projectedLook);
+if (projLen < 0.01) {
+  projectedLook = vec3.perpendicularAny(this.gravityNormal);
+}
+projectedLook = vec3.normalize(projectedLook);
+// 3. Calculate the "Right" vector (perpendicular to Look and Up)
+// This vector will always be perfectly horizontal relative to the planet surface
+let rightVec = vec3.normalize(vec3.cross(projectedLook, this.gravityNormal));
+// 4. Calculate the "True Forward" vector (perpendicular to Up and Right)
+// This vector perfectly "hugs" the curve of the planet
+let forwardVec = vec3.normalize(vec3.cross(this.gravityNormal, rightVec));
+// 5. Calculate final components by scaling our basis vectors
+const fwdMove = vec3.scale(forwardVec, this.relVel[2]);
+const sideMove = vec3.scale(rightVec, this.relVel[0]);
+const upMove = vec3.scale(this.gravityNormal, this.relVel[1]);
+// 6. Combine everything into the final velocity
+this.vel.x = fwdMove[0] - sideMove[0] + upMove[0];
+this.vel.y = fwdMove[1] - sideMove[1] + upMove[1];
+this.vel.z = fwdMove[2] - sideMove[2] + upMove[2];
+///
+if (this.grounded && this.targetYRot != this.yRot) {
+  let delta = (this.targetYRot - this.yRot + Math.PI) % (Math.PI * 2) - Math.PI;
+  if (delta < -Math.PI) delta += Math.PI * 2;
+  let lerpFactor = 0.3;
+  if (Math.abs(delta) > Math.abs(Math.PI / 2)) {lerpFactor = 1;}
+  this.yRot += delta * lerpFactor;
+  if (Math.abs(delta) < 0.001 || true) {
+    this.yRot = this.targetYRot;
+  }
+}
+if (jumpKeyDown && this.grounded && this.spinTimer <= 20) {
+    if (!this.crouching) {
+      this.relVel[1] = 0.45;
+      this.grounded = false;
+      this.raisedSide = !this.raisedSide;
+    } else {
+      this.relVel[1] = 0.25;
+      this.grounded = false;
+      this.relVel[2] = 0.8;
+      this.longJumping = true;
+      this.maxSpeed = 0.6;
+      MAX_SPEED = 0.6;
+    }
+    this.spinTimer = 0;
+    this.crouching = false;
+    this.yRot = this.targetYRot;
+} else if (!this.grounded && this.relVel[1] > 0.1 && !jumpKey && this.spinTimer <= 0) {
+  this.relVel[1] = 0.1;
+}
+  //if (keysDown[32]) {this.vel.x = this.vel.z = 0;}
+  if (spinKeyDown && this.spinTimer <= 0) {
+    this.longJumping = false;
+    this.spinTimer = 30;
+    this.crouching = false;
+    if (this.grounded && this.relVel[2] > 0.1) {
+      this.relVel[2] = (this.relVel[2]) * 0.1;
+    } else if (!this.grounded) {
+      this.relVel[2] = 0;
+      this.relVel[0] = 0;
+      this.relVel[1] = 0.35;
+    }
+    this.crouching = false;
+  } else if (crouchKey && this.spinTimer <= 0 && this.grounded) {
+    this.crouching = true;
+  } else if (!crouchKey) {
+    this.crouching = false;
+  }
+  if (!this.grounded) {
+    let fallAmount = (this.relVel[1] > -0.2 && this.longJumping && this.relVel[1] < 0) ? 0.005 : 0.015;
+    this.relVel[1] -= fallAmount;
+  }
+  this.grounded = false;
+  /*
+  */
+let totalDistance = Math.sqrt(this.vel.x * this.vel.x + this.vel.y * this.vel.y + this.vel.z * this.vel.z);
+let maxStepDist = Math.max(0.01, this.radius - 0.05); // Ensure we don't divide by zero
+let numSteps = Math.ceil(totalDistance / maxStepDist);
+this.wallNormal = [0, 0, 0];
+// If speed is low, numSteps will be 1. If high, it scales up.
+for (let s = 0; s < numSteps; s++) {
+    this.ppos.x = this.pos.x;
+    this.ppos.y = this.pos.y;
+    this.ppos.z = this.pos.z;
+    this.pos.x += this.vel.x / numSteps;
+    this.pos.y += this.vel.y / numSteps;
+    this.pos.z += this.vel.z / numSteps;
+    for (let i = 0; i < 3; i++) {
+        meshCollisions(
+            this,
+            scene.objs
+        );
+    }
+}
+  /*this.ppos.x = this.pos.x;
+  this.ppos.y = this.pos.y;
+  this.ppos.z = this.pos.z;
+  this.pos.x += this.vel.x;
+  this.pos.y += this.vel.y;
+  this.pos.z += this.vel.z;
+  for (let i = 0; i < 3; i++) {
+    meshCollisions(this, [terrainModel, planeModel, planeModel, terrainModel], [m4.identity(), m4.identity(), movePlaneMatrix, tinyTerrainMatrix], [1.0, 1.0, 0.1, 0.2]);
+  }*/
+ 
+  let rcast = raycastModels(scene.objs, [this.pos.x, this.pos.y, this.pos.z], vec3.invert(this.groundNormal), this.radius + Math.abs(this.relVel[2]) + Math.abs(this.relVel[0]) + 0.1);
+  let prevGrounded = this.grounded;
+  //console.log(rcast);
+  if (rcast && this.relVel[1] <= 0 && this.relVel[1] >= -0.01) {
+    //rcast.normal = vec3.normalize(rcast.normal)
+    this.grounded = true;
+    this.longJumping = false;
+    if (!prevGrounded && this.relVel[2] < 0) {this.relVel[2] = 0;}
+    this.pos.x -= (rcast.distance - this.radius) * rcast.normal[0];// * this.gravityNormal[0];
+    this.pos.y -= (rcast.distance - this.radius) * rcast.normal[1];// * this.gravityNormal[1];
+    this.pos.z -= (rcast.distance - this.radius) * rcast.normal[2];// * this.gravityNormal[2];
+    this.relVel[1] = 0;
+  }
+  updateBone(mrCubeModel, 0, 0, 0, 0, 0, 0);
+  if (this.grounded) {
+    if (!this.crouching) {
+      this.animFactor = this.relVel[2] / MAX_SPEED;
+      updateBone(mrCubeModel, 0, 0, (this.animFactor) * Math.abs(Math.sin(degToRad(timer * 15))) * 0.2, 0, 0, 0);
+      updateBone(mrCubeModel, 2, 0, 0, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 3, 0, 0, 0, 0, (this.animFactor) * 70 * Math.sin(degToRad(timer * 15)), 0);
+      updateBone(mrCubeModel, 4, 0, 0, 0, 0, (this.animFactor) * 70 * Math.sin(degToRad(timer * 15)), 0);
+      updateBone(mrCubeModel, 5, 0, 0, 0, (this.animFactor) * 50 * Math.sin(degToRad(timer * 15)), 0, 0);
+      updateBone(mrCubeModel, 6, 0, 0, 0, (this.animFactor) * -50 * Math.sin(degToRad(timer * 15)), 0, 0);
+    } else {
+      updateBone(mrCubeModel, 1, 0, -0.5, 0.0, 0, 0);
+      updateBone(mrCubeModel, 2, 0, 0, 0.2, 45, 0, 0);
+      updateBone(mrCubeModel, 3, 0.2, 0, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 4, -0.2, 0, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 5, 0.05, 0.5, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 6, -0.05, 0.5, 0, 0, 0, 0);
+    }
+  } else {
+      updateBone(mrCubeModel, 2, 0, 0, 0, 0, 0, 0);
+    if (this.spinTimer <= 0 && !this.longJumping && !this.onWall) {
+      updateBone(mrCubeModel, 0, 0, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 3 + this.raisedSide, 0, -0.2, -0.5, 0, 0, 0);
+      updateBone(mrCubeModel, 4 - this.raisedSide, 0, 0.5, 0.5, 0, 0, 0);
+      updateBone(mrCubeModel, 5, 0, 0, 0, 50 - 100*this.raisedSide, 0, 0);
+      updateBone(mrCubeModel, 6, 0, 0, 0, -50 + 100*this.raisedSide, 0, 0);
+    } else if (!this.longJumping && this.spinTimer > 0) {
+      updateBone(mrCubeModel, 0, 0, 0, 0, 0, 360 - (36*(30 - this.spinTimer)));
+      updateBone(mrCubeModel, 3, -0.25, 0.1 - this.relVel[1] / 4, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 4, 0.25, 0.1- this.relVel[1] / 4, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 5, 0.3, 0, 0, 0, 0, 45 - this.relVel[1] * 5);
+      updateBone(mrCubeModel, 6, -0.3, 0, 0, 0, 0, -45 + this.relVel[1] * 5);
+    } else if (this.longJumping) {
+      updateBone(mrCubeModel, 1, 0, 0.0, 0.0, 0, 0);
+      updateBone(mrCubeModel, 2, 0, 0, -0.1, -45 * constrain(this.relVel[1] * 2, -1, 1), 0, 0);
+      updateBone(mrCubeModel, 3, -0.01, 0.1, -1.0, 0, 0, 0);
+      updateBone(mrCubeModel, 4, 0.01, 0.1, -1.0, 0, 0, 0);
+      updateBone(mrCubeModel, 5, -0.05, 0.3, 0.5, 0, 0, 0);
+      updateBone(mrCubeModel, 6, 0.05, 0.3, 0.5, 0, 0, 0);
+    } else if (this.onWall) {
+      updateBone(mrCubeModel, 0, 0, 0, 0, 0, 0);
+      updateBone(mrCubeModel, 3 + this.raisedSide, 0, -0.3, -0.6, 0, 0, 0);
+      updateBone(mrCubeModel, 4 - this.raisedSide, 0, -0.1, 0.2, 0, 0, 0);
+      updateBone(mrCubeModel, 5, -0.1, 0, -0.6, 0, 0, 0);
+      updateBone(mrCubeModel, 6, 0.1, 0, -0.45, 0, 0, 0);
+    }
+  }
+};
+mrCube.prototype.draw = function() {
+// 1. Calculate Basis Vectors
+let referenceLook = [Math.sin(this.yRot), 0, Math.cos(this.yRot)];
+let dot = vec3.dot(referenceLook, this.gravityNormal);
+let projectedLook = vec3.subtract(referenceLook, vec3.scale(this.gravityNormal, dot));
+let projLen = vec3.length(projectedLook);
+if (projLen < 0.01) {
+  projectedLook = vec3.perpendicularAny(this.gravityNormal);
+}
+projectedLook = vec3.normalize(projectedLook);
+// SWapped: (gravityNormal x referenceLook) instead of (referenceLook x gravityNormal)
+let rightVec = vec3.normalize(vec3.cross(this.gravityNormal, projectedLook));
+// Calculate Forward based on the new Right
+let forwardVec = vec3.normalize(vec3.cross(rightVec, this.gravityNormal));
+let upVec = this.gravityNormal;
+// 2. Build the Matrix
+// If it's still inverted, your library might expect Row-Major.
+// But let's try this standard Column-Major order first:
+let m = [
+  rightVec[0], rightVec[1], rightVec[2], 0,
+  upVec[0], upVec[1], upVec[2], 0,
+  forwardVec[0], forwardVec[1], forwardVec[2], 0,
+  this.pos[0], this.pos[1], this.pos[2], 1
+];
+  mrCubeModel.prep(planeTexture, false);
+  gl.uniform1f(getShaderVar("u_excludeProjector"), 1.0);
+  mrCubeModel.draw(m, drawMode ? gl.TRIANGLES : gl.LINE_STRIP);
+  gl.uniform1f(getShaderVar("u_excludeProjector"), -1.0);
+/*let r = this.camera[0];
+let pitch = this.camera[1];
+let yaw = this.camera[2] - degToRad(90);
+camPos[0] = this.pos.x + r * Math.cos(pitch) * Math.cos(yaw); // X
+camPos[1] = this.pos.y + r * Math.sin(pitch) + 1; // Y (Up/Down)
+camPos[2] = this.pos.z + r * Math.cos(pitch) * Math.sin(yaw); // Z
+camPos[3] = this.camera[1] * 180/ Math.PI;
+camPos[4] = this.camera[2] * 180/ Math.PI;
+camPos[5] = this.camera[3] * 180/ Math.PI;*/
+//
+camPos[0] = this.pos.x + this.gravityNormal[0] * 15;
+camPos[1] = this.pos.y + this.gravityNormal[1] * 15;
+camPos[2] = this.pos.z + this.gravityNormal[2] * 15;
+// Direction camera → player
+const dx = this.pos.x - camPos[0];
+const dy = this.pos.y - camPos[1];
+const dz = this.pos.z - camPos[2];
+const yaw = -Math.atan2(dx, dz);
+const pitch = -Math.atan2(dy, Math.sqrt(dx*dx + dz*dz));
+// Store in degrees
+this.camera[1] = pitch;
+this.camera[2] = yaw;
+camPos[3] = pitch * (180 / Math.PI); // pitch
+camPos[4] = yaw * (180 / Math.PI); // yaw
+camPos[5] = 0;
+//camPos[0] = this.pos.x + this.gravityNormal[0] * 5;
+//camPos[1] = this.pos.y + this.gravityNormal[1] * 5;
+//camPos[2] = this.pos.z + this.gravityNormal[2] * 5;
+  //camPos[0] = 0 * 180/Math.PI;
+/*const dir = [
+    this.gravityNormal[0],
+    this.gravityNormal[1],
+    this.gravityNormal[2]
+];
+this.camera[0] = camPos[3] = Math.asin(dir[1]) * 180 / Math.PI;
+this.camera[1] = camPos[4] = Math.atan2(dir[0], dir[2]) * 180 / Math.PI;
+this.camera[2] = camPos[5] = 0;*/
+ 
+}

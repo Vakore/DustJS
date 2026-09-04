@@ -1,0 +1,86 @@
+/*
+  linkedListNode {
+    this.nexts = [];
+    this.prevs = [];
+    this.data = null;
+  }
+
+  linkedList = {
+    this.headNodes = [];
+    this.tailNodes = [];
+    this.lengths = [];
+  }
+
+  linkedList.get(index, listId = 0) {
+    let nodePtr = this.headNodes[listId];
+    let nodeIndex = 0;
+    if (index > this.lengths[listId] / 2) {
+      nodePtr = this.tailNodes[listId];
+      nodeIndex = this.lengths[listId] - 1;
+      while (nodeIndex != index) {
+        nodePtr = nodePtr.prevs[listID];
+        index--;
+      }
+    } else {
+      while (nodeIndex != index) {
+        nodePtr = nodePtr.nexts[listID];
+        index++;
+      }
+    }
+    
+  }
+
+  
+*/
+
+function sceneObject(scaleFactor, matrix, model, texture, useNormals) {
+  this.scaleFactor = scaleFactor;
+  this.model = model;
+  this.matrix = matrix;
+  this.texture = texture;
+  this.useNormals = useNormals;
+};
+
+sceneObject.prototype.draw = function() {
+  
+};
+
+function sceneHandler() {
+  this.objs = [];
+  this.fillDraws = [];
+  this.paneDraws = [];
+};
+
+sceneHandler.prototype.add = function(scaleFactor, matrix, model, texture, useNormals) {
+  this.objs.push(new sceneObject(scaleFactor, matrix, model, texture, useNormals));
+  if (model.solid) {
+    this.fillDraws.push(this.objs.length - 1);
+  } else {
+    this.paneDraws.push(this.objs.length - 1);
+  }
+};
+
+sceneHandler.prototype.draw = function() {
+  /*
+  NOTES:
+  1. CULL BEFORE SORTING! Do not draw culled objects (going to need a cull screen)
+  2. Maybe don't sort fillDraws? paneDraws definitely needs sorting
+  3. We're going to need a way to organize by shader, so maybe these should be
+    a list of shader lists instead with rules for sorting and whatnot?
+  */
+
+  //this.fillDraws.sort();//fully sort list
+  //this.fillDraws.softSort();//do minor swaps to allow for sort-like ops in O(N)
+  for (let i = 0; i < this.fillDraws.length; i++) {
+    let o = this.objs[this.fillDraws[i]];
+    o.model.prep(o.texture, o.useNormals);
+    o.model.draw(o.matrix, drawMode ? gl.TRIANGLES : gl.LINE_STRIP);
+  }
+  
+  //this.paneDraws.sort();//fully sort list, no minor swap option
+  for (let i = 0; i < this.paneDraws.length; i++) {
+    let o = this.objs[this.paneDraws[i]];
+    o.model.prep(o.texture, o.useNormals);
+    o.model.draw(o.matrix, drawMode ? gl.TRIANGLES : gl.LINE_STRIP);
+  }
+};

@@ -1,0 +1,144 @@
+
+let _settings = {
+  FOV:60,
+  zNear:0.01,
+  zFar:2000
+};
+
+function fullscreen() {
+  if (canvas.webkitRequestFullScreen) {
+    canvas.webkitRequestFullScreen();
+  } else {
+    canvas.mozRequestFullScreen();
+  }
+}
+
+
+  let matrixMatrix = new Array(16*16).fill(0);
+  let curMatrix = new Array(16).fill(0);
+  let matrixPos = 0;
+  function pushMatrix() {
+    for (let i = 0; i < 16; i++) {
+      matrixMatrix[matrixPos + i] = curMatrix[i];
+    }
+    matrixPos += 16;
+  }
+
+  function popMatrix() {
+    matrixPos -= 16;
+    for (let i = 0; i < 16; i++) {
+      curMatrix[i] = matrixMatrix[matrixPos + i];
+    }
+  }
+
+
+function setGeometry(gl, model) {
+  gl.enableVertexAttribArray(positionLocation);
+  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+  gl.bufferData(
+      gl.ARRAY_BUFFER,
+      model.verts,
+      gl.STATIC_DRAW);
+  gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 0, 0);
+}
+
+function setColors(gl, model) {
+  gl.enableVertexAttribArray(colorLocation);
+  gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+  gl.bufferData(
+      gl.ARRAY_BUFFER,
+      model.colors,
+      gl.STATIC_DRAW);
+  gl.vertexAttribPointer(colorLocation, 3, gl.UNSIGNED_BYTE, true, 0, 0);
+}
+
+function setNormals(gl, model) {
+  gl.enableVertexAttribArray(normalLocation);
+  gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+  gl.bufferData(
+      gl.ARRAY_BUFFER,
+      model.normals,
+      gl.STATIC_DRAW);
+  gl.vertexAttribPointer(normalLocation, 3, gl.FLOAT, true, 0, 0);
+}
+
+function setBoneIDs(gl, model) {
+  gl.enableVertexAttribArray(boneIDLocation);
+  gl.bindBuffer(gl.ARRAY_BUFFER, boneIDBuffer);
+  gl.bufferData(
+      gl.ARRAY_BUFFER,
+      model.boneIDs,
+      gl.STATIC_DRAW);
+  gl.vertexAttribPointer(boneIDLocation, 4, gl.UNSIGNED_BYTE, false, 0, 0);
+}
+
+function setBoneWeights(gl, model) {
+  gl.enableVertexAttribArray(boneWeightLocation);
+  gl.bindBuffer(gl.ARRAY_BUFFER, boneWeightBuffer);
+  gl.bufferData(
+      gl.ARRAY_BUFFER,
+      model.boneWeights,
+      gl.STATIC_DRAW);
+  gl.vertexAttribPointer(boneWeightLocation, 4, gl.FLOAT, false, 0, 0);
+}
+
+function setBoneTransforms(gl, model) {
+  let flatBones = [];
+  for (let i = 0; i < model.bones.length; i++) {
+    let iBone = m4.multiply(model.bones[i].curPos, model.bones[i].binvPos);
+    for (let j = 0; j < iBone.length; j++) {
+      flatBones.push(iBone[j]);
+    }
+  }
+  flatBones = new Float32Array(flatBones);
+  gl.uniformMatrix4fv(boneTransformsLocation, false, flatBones);
+}
+
+function setVerts(gl, model) {
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+  gl.bufferData(
+      gl.ELEMENT_ARRAY_BUFFER,
+      model.tris,
+      gl.STATIC_DRAW);
+}
+
+function setTexcoords(gl, model, texture) {
+  if (model.texcoords && model.texcoords.length > 0) {
+    gl.enableVertexAttribArray(texcoordLocation);
+    gl.bindBuffer(gl.ARRAY_BUFFER, textureBuffer);
+    gl.bufferData(
+        gl.ARRAY_BUFFER,
+        model.texcoords,
+        gl.STATIC_DRAW);
+    gl.vertexAttribPointer(texcoordLocation, 2, gl.FLOAT, false, 0, 0);
+    
+    // Bind diffuse texture to texture unit 0
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
+    gl.uniform1f(useTextureLocation, 1.0);
+  } else {
+    gl.disableVertexAttribArray(texcoordLocation);
+    gl.vertexAttrib2f(texcoordLocation, 0.0, 0.0);
+    gl.uniform1f(useTextureLocation, 0.0);
+  }
+}
+function setNormalMap(gl, normalMap) {
+  if (normalMap != undefined) {
+    // Bind normal map to texture unit 1
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, normalMap);
+    gl.uniform1i(normalMapLocation, 1);
+    gl.uniform1f(useNormalMapLocation, 1.0);
+  } else {
+    // Bind default flat normal texture to texture unit 1
+    /*gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, normalMap);
+    gl.uniform1i(normalMapLocation, 1);*/
+    gl.uniform1f(useNormalMapLocation, 0.0);
+  }
+  
+  // Reset to texture unit 0 for diffuse texture
+  gl.activeTexture(gl.TEXTURE0);
+}
+

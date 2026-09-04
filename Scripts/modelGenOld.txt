@@ -1,0 +1,402 @@
+//838 triangles for M64
+//14375 triangles for MOd
+
+let model = function() {
+  this.verts = [];//x, y, z
+  this.colors = [];//r, g, b
+  this.texCoords = [];//x, y
+  this.tris = [];//indices[0, 1, 2]
+  this.bones = [];
+  this.boneIDs = [];
+  this.boneWeights = [];
+}
+
+model.prototype.typify = function() {
+  this.verts = new Float32Array(this.verts);
+  this.colors = new Uint8Array(this.colors);
+  this.tris = new Uint16Array(this.tris);
+  this.boneIDs = new Uint8Array(this.boneIDs);
+  this.boneWeights = new Float32Array(this.boneWeights);
+}
+
+/*
+struct Vertex {
+  vector<vec3> verts
+  vector<vec3> colors
+  vector<vec2> texCoords
+  vector<vec3> tris
+  int[4] boneIDs
+}
+*/
+let yellowColor = {
+  colors:[]
+};
+let cubeModel = {
+  verts:new Float32Array([-0.5,-0.5,-0.5, 0.5,-0.5,-0.5,
+         -0.5,-0.5,0.5, 0.5,-0.5,0.5,
+         -0.5,0.5,-0.5, 0.5,0.5,-0.5,
+         -0.5,0.5,0.5, 0.5,0.5,0.5]),//x, y, z
+  colors:[],//r, g, b
+  texCoords:[],//x, y
+  tris:new Uint16Array([0, 1, 2, 2, 1, 3,
+                        4, 6, 5, 6, 7, 5,
+                        2, 3, 6, 6, 3, 7,
+                        0, 4, 1, 4, 5, 1,
+                        0, 2, 4, 4, 2, 6,
+                        1, 5, 3, 3, 5, 7]),//indices[0, 1, 2]
+  bones:[],
+  boneIDs:[],
+  boneWeights:[]
+};
+
+for (let i = 0; i < cubeModel.verts.length / 3; i++) {
+  cubeModel.colors.push(255,255,255);
+  yellowColor.colors.push(255,255,0);
+  cubeModel.boneIDs.push(0,0,0,0);
+  cubeModel.boneWeights.push(1.0,0.0,0.0,0.0);
+}
+yellowColor.colors = new Uint8Array(yellowColor.colors);
+cubeModel.colors = new Uint8Array(cubeModel.colors);
+cubeModel.boneIDs = new Uint8Array(cubeModel.boneIDs);
+cubeModel.boneWeights = new Float32Array(cubeModel.boneWeights);
+
+cubeModel.bones = [
+{children:[], curPos:m4.identity(), binvPos:m4.identity()},
+];
+
+cubeModel.bones[0].curPos = m4.translate(cubeModel.bones[0].curPos, 0.0, 0.0, 0.0);
+for (let i = 0; i < cubeModel.bones.length; i++) {
+  cubeModel.bones[i].binvPos = m4.inverse(cubeModel.bones[i].curPos);
+}
+
+let vordasModel = new model();
+/*
+vertex array (va) = array of all vertices (vpa = position, vca = color, vta = texture)
+
+Ring = array of indices that a ring consists of, length = N-gon-ality
+
+Fill = create a plane from a ringś vertices, i.e. bottom of flat shoe.
+Can also be done by connecting the ring to a N=1 ring of equal y value
+
+Needed: methodology of connecting rings
+*/
+let triIndex = 0;
+function genRing(model, N, radius, xp, yp, zp, xs, ys, zs) {
+ //let o = 0;
+ let ring = [];
+ for (let i = 0; i < 360; i += 360 / N) {
+  let x = xp + Math.cos(i * Math.PI / 180) * radius * xs;
+  let y = yp + Math.cos(i * Math.PI / 180) * radius * ys;
+  let z = zp + Math.sin(i * Math.PI / 180) * radius * zs;
+  
+  let cr = 80 + Math.random() * 32;
+  model.colors.push(cr, cr, cr);
+  
+  model.verts.push(x, y, z);
+  ring.push(triIndex);
+  triIndex++;
+ }
+ //alert("RING: " + ring);
+ return ring;
+}
+
+let springVerts = [];
+function connectRings(model, ringA, ringB, offsetA = 0, offsetB = 0) {
+  let m = ringA.length;
+  let n = ringB.length;
+
+  let i = 0, j = 0;
+  /*while (i < m) {
+    model.tris.push(ringA[i], ringA[(i + 1) % m], ringB[i]);
+    model.tris.push(ringB[i], ringA[(i + 1) % m], ringB[(i + 1) % m]);
+    i++;
+  }*/
+  let currA = offsetA % m, currB = offsetB % n;
+
+  while (i < m || j < n) {
+    let nextA = (currA + 1) % m;
+    let nextB = (currB + 1) % n;
+
+    let tA = (i + 1) / m;
+    let tB = (j + 1) / n;
+
+    if ((i < m && tA <= tB) || j >= n) {
+      model.tris.push(ringA[currA], ringA[nextA], ringB[currB]);
+      currA = nextA;
+      i++;
+    } else {
+      model.tris.push(ringA[currA], ringB[nextB], ringB[currB]);
+      currB = nextB;
+      j++;
+    }
+  }
+}
+
+
+
+vordasModel.bones = [
+{children:[1,3], curPos:m4.identity(), binvPos:m4.identity()},
+{children:[2], curPos:m4.identity(), binvPos:m4.identity()},
+{children:[], curPos:m4.identity(), binvPos:m4.identity()},
+{children:[4], curPos:m4.identity(), binvPos:m4.identity()},
+{children:[], curPos:m4.identity(), binvPos:m4.identity()},
+];
+
+let lengthOfThing = 10;
+vordasModel.bones[0].curPos = m4.translate(vordasModel.bones[0].curPos, lengthOfThing / 2, 0.0, 0.0);
+vordasModel.bones[1].curPos = m4.translate(vordasModel.bones[1].curPos, lengthOfThing/2 - 2.0, 0, 0);
+vordasModel.bones[2].curPos = m4.translate(vordasModel.bones[2].curPos, lengthOfThing/2 - 1.0, 0, 0);
+vordasModel.bones[3].curPos = m4.translate(vordasModel.bones[3].curPos, lengthOfThing/2 + 1.0, 0, 0);
+vordasModel.bones[4].curPos = m4.translate(vordasModel.bones[4].curPos, lengthOfThing/2 + 2.0, 0, 0);
+for (let i = 0; i < vordasModel.bones.length; i++) {
+  vordasModel.bones[i].binvPos = m4.inverse(vordasModel.bones[i].curPos);
+}
+
+//head and body
+let rings = [];
+let Ns = [1, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 1];
+let yp = [4.5, 4.0, 3.5, 3.0, 2.0, -0.5, -1.0, -1.5, -2.0, -2.5,-3.0, -8.5, -9.0, -9.5];
+let zs = [0.0, 0.6, 0.85, 0.95, 1.0, 1.0, 0.95, 0.85, 0.6, 1.0,0.95, 0.95, 0.85, 0.0];
+let lemax = yp.length - 1;
+for (let k = 0; k < lemax; k++) {
+  rings.push(genRing(vordasModel, Ns[k], 4.0, 0, yp[k], 0, zs[k], 0, zs[k]));
+  //rings.push(genRing(vordasModel, Ns[k], 4.0, yp[k], 0, 0, 0, zs[k], zs[k]));
+  //rings.push(genRing(vordasModel, Ns[k], 4.0, 0, 0, yp[k], zs[k], zs[k], 0));
+}
+alert(rings[0] + ", \n" + rings[1]);
+
+//merge rings
+for (let k = 1; k < rings.length; k++) {
+  connectRings(vordasModel, rings[k - 1], rings[k]);
+}
+
+
+//torso
+console.log("torso: " + rings[rings.length - 1]);
+let torsoRingL = [];
+let torsoRingR = [];
+for (let i = 1; i < 7; i++) {
+  console.log(rings[rings.length - 1][i] + "L");
+  torsoRingL.push(rings[rings.length - 1][i]);
+}
+//Problem: connectRings is based on orientation of rings
+//Solution: allow for rign rotation of sorts, or auto-orient
+for (let i = 6; i < rings[rings.length - 1].length + 2; i++) {
+  console.log(rings[rings.length - 1][i % rings[rings.length - 1].length] + "R");
+  torsoRingR.push(rings[rings.length - 1][i % rings[rings.length - 1].length]);
+}
+
+//legs
+rings.push(genRing(vordasModel, 9, 4.0, -0.0, -9.5, 1.6, 0.35, 0, 0.35));
+connectRings(vordasModel, torsoRingL, rings[rings.length - 1]);
+rings.push(genRing(vordasModel, 9, 4.0, -0.0, -14.5, 1.6, 0.35, 0, 0.35));
+connectRings(vordasModel, rings[rings.length - 2], rings[rings.length - 1]);
+rings.push(genRing(vordasModel, 9, 4.0, -0.0, -15.5, 1.6, 0.4, 0, 0.4));
+connectRings(vordasModel, rings[rings.length - 2], rings[rings.length - 1]);
+
+
+rings.push(genRing(vordasModel, 9, 4.0, -0.0, -9.5, -1.6, 0.35, 0, 0.35));
+connectRings(vordasModel, torsoRingR, rings[rings.length - 1], 2);
+rings.push(genRing(vordasModel, 9, 4.0, -0.0, -14.5, -1.6, 0.35, 0, 0.35));
+connectRings(vordasModel, rings[rings.length - 2], rings[rings.length - 1]);
+rings.push(genRing(vordasModel, 9, 4.0, -0.0, -15.5, -1.6, 0.4, 0, 0.4));
+connectRings(vordasModel, rings[rings.length - 2], rings[rings.length - 1]);
+
+
+console.log(JSON.stringify(vordasModel.tris));
+console.log(JSON.stringify(springVerts));
+/*
+
+  let cr = 80 + Math.random() * 32;
+  if ((k == 3 || k == 4) && i >= 160 && i <= 200) {
+    vordasModel.colors.push(cr * 0.5 + 160, 0, 0);
+    x *= 0.8; z *= 0.8;
+  } else {
+    vordasModel.colors.push(cr, cr, cr);
+  }*/
+
+
+//legs and feet
+/*rings = [[], [], []];
+yp = [-9.0, -15.0, -16.0];
+zs = [0.4, 0.35, 0.45];
+lemax = rings.length;
+for (let l = 0; l < 2; l++) {
+rings = [[], [], []];
+for (let k = 0; k < lemax; k++) {
+ for (let i = 0; i < 360; i += 60) {
+  let x = Math.cos(i * Math.PI / 180) * 4 * zs[k];
+  if (i == 3*60 && k == 2) {x *= 3;}
+  let y = yp[k]
+  let z = Math.sin(i * Math.PI / 180) * 4 * zs[k] - 1.8 + l*3.6;
+  
+  let cr = 80 + Math.random() * 32;
+  vordasModel.colors.push(cr, cr, cr);
+  
+  springVerts.push(x, y, z);
+  if (k > 0) {
+    rings[k - 1].push(triIndex);
+  }
+  if (k < lemax - 1) {
+    rings[k].push(triIndex);
+  }
+  triIndex++;
+ }
+ if (k < lemax-1) {
+  rings[k].push(rings[k][0]);
+  console.log("p" + k);
+ }
+ if (k > 0) {
+  rings[k-1].push(rings[k-1][Math.ceil(rings[k-1].length / 2)]);
+  console.log("h" + k);
+ }
+}
+
+g = Math.floor(rings[0].length / 2);
+for (let i = 0; i < rings[0].length / 2; i++) {
+  for (let j = 0; j < rings.length; j++) {
+    vordasModel.tris.push(
+      rings[j][i], rings[j][i+1], rings[j][i+g],
+      rings[j][i+1], rings[j][i+g+1], rings[j][i+g]
+    );
+  }
+}
+
+
+springVerts.push(0.0, yp[yp.length - 1], -1.8 + l*3.6);
+vordasModel.colors.push(80, 80, 80);
+kkkk = (springVerts.length / 3) - 1;
+for (let i = rings[rings.length - 2].length / 2; i < rings[rings.length - 2].length - 1; i++) {
+    //alert(i);
+    vordasModel.tris.push(
+      rings[rings.length - 2][i+1], kkkk, rings[rings.length - 2][i],
+    );
+}
+triIndex++;
+}
+
+
+//arms and hands
+rings = [[], [], [], [], [], []];
+yp = [3.5, 9.0, 9.5, 10.0, 11.0, 11.5];
+zs = [0.4, 0.4, 0.35, 0.4, 0.4, 0.35];
+lemax = rings.length;
+for (let l = 0; l < 2; l++) {
+rings = [[], [], [], [], [], []];
+for (let k = 0; k < lemax; k++) {
+ for (let i = 0; i < 360; i += 60) {
+  let x = Math.cos(i * Math.PI / 180) * 4 * zs[k];
+  let y = -4.5 + Math.sin(i * Math.PI / 180) * 4 * zs[k];
+  let z = yp[k] * (l == 1 ? 1 : -1);
+  
+  let cr = 80 + Math.random() * 32;
+  vordasModel.colors.push(cr, cr, cr);
+  
+  springVerts.push(x, y, z);
+  if (k > 0) {
+    rings[k - 1].push(triIndex);
+  }
+  if (k < lemax - 1) {
+    rings[k].push(triIndex);
+  }
+  triIndex++;
+ }
+ if (k < lemax-1) {
+  rings[k].push(rings[k][0]);
+  console.log("p" + k);
+ }
+ if (k > 0) {
+  rings[k-1].push(rings[k-1][Math.ceil(rings[k-1].length / 2)]);
+  console.log("h" + k);
+ }
+}
+
+g = Math.floor(rings[0].length / 2);
+if (l == 1) {
+  for (let i = 0; i < rings[0].length / 2; i++) {
+    for (let j = 0; j < rings.length; j++) {
+      vordasModel.tris.push(
+        rings[j][i], rings[j][i+1], rings[j][i+g],
+        rings[j][i+1], rings[j][i+g+1], rings[j][i+g]
+      );
+    }
+  }
+} else {
+  for (let i = 0; i < rings[0].length / 2; i++) {
+    for (let j = 0; j < rings.length; j++) {
+      vordasModel.tris.push(
+        rings[j][i+g], rings[j][i+1], rings[j][i],
+        rings[j][i+g], rings[j][i+g+1], rings[j][i+1]
+      );
+    }
+  }
+}
+
+
+springVerts.push(0.0, -4.5, (yp[rings.length - 1] + 0.5) * (l == 1 ? 1 : -1));
+vordasModel.colors.push(80, 80, 80);
+let kkkk = (springVerts.length / 3) - 1;
+for (let i = 0; i < rings[rings.length - 2].length - 1; i++) {
+    if (l == 1) {
+    vordasModel.tris.push(
+      rings[rings.length - 2][i], rings[rings.length - 2][i+1], kkkk,
+    );
+    } else {
+    vordasModel.tris.push(
+      rings[rings.length - 2][i], kkkk, rings[rings.length - 2][i+1],
+    );
+    }
+}
+triIndex++;
+
+}*/
+
+
+
+
+//TODO: make a model/mesh struct
+
+for (let i = 0; i < springVerts.length; i += 3) {
+  let closestBones = [];
+  let boneDists = [];
+  for (let j = 0; j < vordasModel.bones.length; j++) {
+    closestBones.push(j);
+    let curDist = Math.sqrt((springVerts[i]-vordasModel.bones[j].curPos[12])*(springVerts[i]-vordasModel.bones[j].curPos[12]) +
+              (springVerts[i+1]-vordasModel.bones[j].curPos[13])*(springVerts[i+1]-vordasModel.bones[j].curPos[13]) +
+              (springVerts[i+2]-vordasModel.bones[j].curPos[14])*(springVerts[i+2]-vordasModel.bones[j].curPos[14]));
+    boneDists.push(curDist);
+  }
+
+  let ret = [boneDists, closestBones];
+  for (let j = 1; j < ret[0].length; j++) {
+    let k = j;
+    while (k > 0 && ret[0][k - 1] > ret[0][k]) {
+      let temp = ret[0][k - 1];
+      let temp2 = ret[1][k - 1];
+      ret[0][k - 1] = ret[0][k];
+      ret[1][k - 1] = ret[1][k];
+      ret[0][k] = temp;
+      ret[1][k] = temp2;
+      k--;
+    }
+  }
+  
+  vordasModel.boneIDs.push(ret[1][0], ret[1][1], ret[1][2], ret[1][3]);
+  let sum = 0;
+  for (let j = 0; j < 4; j++) {
+    ret[0][j] = (1 / ret[0][j]);
+    if (ret[0][j] < 0.1) {ret[0][j] = 0.0;}
+    if (ret[0][j] > 1) {ret[0][j] = 1.0;}
+    sum += ret[0][j];
+  }
+  for (let j = 0; j < 4; j++) {
+    ret[0][j] /= sum;
+  }
+  vordasModel.boneWeights.push(ret[0][0], ret[0][1], ret[0][2], ret[0][3]);
+}
+vordasModel.typify();
+/*vordasModel.verts = new Float32Array(vordasModel.verts);
+vordasModel.colors = new Uint8Array(vordasModel.colors);
+vordasModel.tris = new Uint16Array(vordasModel.tris);
+vordasModel.boneIDs = new Uint8Array(vordasModel.boneIDs);
+vordasModel.boneWeights = new Float32Array(vordasModel.boneWeights);*/

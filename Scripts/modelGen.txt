@@ -1,0 +1,906 @@
+/*
+struct Vertex {
+  vector<vec3> verts
+  vector<vec3> colors
+  vector<vec2> texCoords
+  vector<vec3> tris
+  int[4] boneIDs
+}
+*/
+
+let model = function() {
+  this.verts = [];//x, y, z
+  this.colors = [];//r, g, b
+  this.tris = [];//indices[0, 1, 2]
+  this.bones = [];
+  this.boneIDs = [];
+  this.boneWeights = [];
+  this.normals = [];
+  this.texcoords = [];
+
+  this.rings = [];
+  this.minVec = [Infinity,Infinity,Infinity];
+  this.maxVec = [-Infinity,-Infinity,-Infinity];
+};
+
+
+model.prototype.prep = function(texture, useNormalMap) {
+  setGeometry(gl, this);
+  setColors(gl, this);
+  setNormals(gl, this);
+  setBoneIDs(gl, this);
+  setBoneWeights(gl, this);
+  setBoneTransforms(gl, this);
+  setVerts(gl, this);
+  setTexcoords(gl, this, texture.img);
+  setNormalMap(gl, texture.normal);
+};
+model.prototype.draw = function(matrix, drawMode = gl.TRIANGLES) {
+    let invModel = m4.inverse(matrix);
+    let normalMatrix = m4.transpose(invModel);
+
+    // Take only the 3x3 part (ignore translation)
+    let normalMat3 = [
+        normalMatrix[0], normalMatrix[1], normalMatrix[2],
+        normalMatrix[4], normalMatrix[5], normalMatrix[6],
+        normalMatrix[8], normalMatrix[9], normalMatrix[10]
+    ];
+
+    gl.uniformMatrix3fv(
+        getShaderVar("u_normalMatrix"),
+        false,
+        normalMat3
+    );
+    gl.uniformMatrix4fv(modelPosLocation, false, matrix);
+    gl.drawElements(drawMode, this.tris.length, gl.UNSIGNED_SHORT, 0);
+};
+
+model.prototype.typify = function() {
+ if (this.normals == null || this.normals.length == 0) {
+  this.normals = new Array(this.verts.length).fill(0);
+  //alert(this.tris);
+  for (let i = 0; i < this.tris.length; i += 3) {
+
+    //yeah lets do stuff here for normal calculations
+    let cp = crossProduct(
+      [this.verts[this.tris[i]*3], this.verts[this.tris[i]*3 + 1], this.verts[this.tris[i]*3 + 2]],
+      [this.verts[this.tris[i+1]*3], this.verts[this.tris[i+1]*3 + 1], this.verts[this.tris[i+1]*3 + 2]],
+      [this.verts[this.tris[i+2]*3], this.verts[this.tris[i+2]*3 + 1], this.verts[this.tris[i+2]*3 + 2]]
+    );
+    
+    for (let j = 0; j < 3; j++) {
+      //this.normals[this.tris[i]*3+j] += cp[j];
+      this.normals[this.tris[i]   * 3 + j] += cp[j];
+      this.normals[this.tris[i+1] * 3 + j] += cp[j];
+      this.normals[this.tris[i+2] * 3 + j] += cp[j];
+    }
+  }
+
+  for (let i = 0; i < this.normals.length; i += 3) {
+      let norm = vec3.normalize([this.normals[i], this.normals[i+1], this.normals[i+2]]);
+      this.normals[i] = norm[0];
+      this.normals[i+1] = norm[1];
+      this.normals[i+2] = norm[2];
+  }
+
+  //bounding box, TODO: matrix application
+  for (let i = 0; i < this.verts.length; i += 3) {
+    this.minVec[0] = Math.min(this.minVec[0], this.verts[i]);
+    this.minVec[1] = Math.min(this.minVec[1], this.verts[i+1]);
+    this.minVec[2] = Math.min(this.minVec[2], this.verts[i+2]);
+    this.maxVec[0] = Math.min(this.maxVec[0], this.verts[i]);
+    this.maxVec[1] = Math.min(this.maxVec[1], this.verts[i+1]);
+    this.maxVec[2] = Math.min(this.maxVec[2], this.verts[i+2]);
+  }
+ }
+  
+  this.verts = new Float32Array(this.verts);
+  this.colors = new Uint8Array(this.colors);
+  this.tris = new Uint16Array(this.tris);
+  this.boneIDs = new Uint8Array(this.boneIDs);
+  this.boneWeights = new Float32Array(this.boneWeights);
+  this.normals = new Float32Array(this.normals);
+  this.texcoords = new Float32Array(this.texcoords);
+}
+
+
+
+let triIndex = 0;
+// A simple helper function to apply a 3D rotation matrix
+function rotateVertex(x, y, z, pitch, yaw, roll) {
+    let newX = x;
+    let newY = y;
+    let newZ = z;
+
+    // Convert degrees to radians for Math.sin/Math.cos
+    const pRad = pitch * Math.PI / 180;
+    const yRad = yaw * Math.PI / 180;
+    const rRad = roll * Math.PI / 180;
+    
+    // --- 1. Roll (Rotation around Z-axis) ---
+    // Rotates the X and Y coordinates in the XY plane.
+    if (roll !== 0) {
+        let tempX = newX;
+        newX = tempX * Math.cos(rRad) - newY * Math.sin(rRad);
+        newY = tempX * Math.sin(rRad) + newY * Math.cos(rRad);
+    }
+
+    // --- 2. Pitch (Rotation around X-axis) ---
+    // Rotates the Y and Z coordinates in the YZ plane.
+    if (pitch !== 0) {
+        let tempY = newY;
+        newY = tempY * Math.cos(pRad) - newZ * Math.sin(pRad);
+        newZ = tempY * Math.sin(pRad) + newZ * Math.cos(pRad);
+    }
+    
+    // --- 3. Yaw (Rotation around Y-axis) ---
+    // Rotates the X and Z coordinates in the XZ plane.
+    if (yaw !== 0) {
+        let tempX = newX;
+        newX = tempX * Math.cos(yRad) + newZ * Math.sin(yRad);
+        newZ = -tempX * Math.sin(yRad) + newZ * Math.cos(yRad);
+    }
+    
+    return [newX, newY, newZ];
+}
+
+function genRing(model, vertexCount, xCenter, yCenter, zCenter, xScale, zScale, pitch, yaw, roll, angleOffset = 0) {
+    let ring = [];
+    //vertexCount *= 2;
+    
+    // The flat ring is generated in the XZ plane (Y=0) relative to the center.
+    // The calculated (x, y, z) will be the RELATIVE coordinates (where center is 0, 0, 0)
+    for (let i = 0; i < 360; i += 360 / vertexCount) {
+        // Step 1: Calculate UNROTATED relative coordinates (centered at 0, 0, 0)
+        let relX = Math.cos((i + angleOffset) * Math.PI / 180) * xScale;
+        let relY = 0; // Flat ring in the XZ plane
+        let relZ = Math.sin((i + angleOffset) * Math.PI / 180) * zScale;
+        
+        // Step 2: Apply 3D Rotation (Pitch, Yaw, Roll)
+        const [rotatedX, rotatedY, rotatedZ] = rotateVertex(relX, relY, relZ, pitch, yaw, roll);
+
+        // Step 3: Translate rotated coordinates back to the global center
+        let x = xCenter + rotatedX;
+        let y = yCenter + rotatedY;
+        let z = zCenter + rotatedZ;
+        
+        // --- Existing Code ---
+        let cr = 80 + Math.random() * 32;
+        //cr = 255;
+        model.colors.push(cr, cr, cr);
+        //model.texcoords.push(Math.random(), Math.random());
+        //model.texcoords.push(Math.random(), Math.random());
+        
+        model.verts.push(x, y, z);
+        ring.push(triIndex);
+        triIndex++;
+    }
+    return ring;
+}
+
+function pushBoneIDs(model, ring, boneIDs, boneWeights) {
+  for (let i = 0; i < ring.length; i++) {
+    for (let j = 0; j < boneIDs.length; j++) {
+      model.boneIDs.push(boneIDs[j]);
+      model.boneWeights.push(boneWeights[j]);
+    }
+  }
+}
+
+
+
+  function getOrientation(x1, y1, x2, y2, x3, y3) {
+    const crossZ = (x2 - x1) * (y3 - y2) - (y2 - y1) * (x3 - x2);
+
+    if (crossZ > 0) {
+      return 'counter-clockwise';
+    } else if (crossZ < 0) {
+      return 'clockwise';
+    } else {
+      return 'collinear'; // Points lie on the same line
+    }
+  }
+  
+  function inPolygon(x, y, polyVerts) {
+    let inside = false;
+    let p1x = polyVerts[0][0];
+    let p1y = polyVerts[0][1];
+
+    for (let i = 0; i < polyVerts.length; i++) {
+      let p2x = polyVerts[i % polyVerts.length][0];
+      let p2y = polyVerts[i % polyVerts.length][1];
+      if (((p1y > y) != (p2y > y)) &&
+          (x < (p2x - p1x) * (y - p1y) / (p2y - p1y) + p1x)) {
+          inside = !inside;
+      }
+      p1x = p2x;
+      p1y = p2y;
+    }
+    return inside;
+  }
+  function inPolygonWinding(x, y, polyVerts) {
+    let windingNumber = 0;
+    
+    for (let i = 0; i < polyVerts.length; i++) {
+        let p1x = polyVerts[i][0];
+        let p1y = polyVerts[i][1];
+        // p2 is the next vertex, wrapping around to 0
+        let p2x = polyVerts[(i + 1) % polyVerts.length][0];
+        let p2y = polyVerts[(i + 1) % polyVerts.length][1];
+
+        // Edge case: point on a vertex (not handled by the original code, but good to add)
+        if (x === p1x && y === p1y) return true; 
+
+        // 1. Check if the edge crosses the horizontal ray starting at the point (x, y)
+        if (p1y <= y) { // Start point is below or on the ray
+            if (p2y > y) { // End point is above the ray (Upward crossing)
+                // Check if the intersection point is to the right of x
+                if ((p2x - p1x) * (y - p1y) - (p2y - p1y) * (x - p1x) > 0) {
+                    windingNumber++; // Ray crossed edge from below
+                }
+            }
+        } else { // Start point is above the ray (p1y > y)
+            if (p2y <= y) { // End point is below or on the ray (Downward crossing)
+                // Check if the intersection point is to the right of x
+                if ((p2x - p1x) * (y - p1y) - (p2y - p1y) * (x - p1x) < 0) {
+                    windingNumber--; // Ray crossed edge from above
+                }
+            }
+        }
+    }
+    
+    // If the winding number is non-zero, the point is inside
+    return windingNumber !== 0; 
+}
+
+
+
+
+function reverseArrInTris(arr) {
+  const result = [];
+  for (let i = 0; i < arr.length; i += 3) {
+      result.unshift(arr[i], arr[i + 1], arr[i + 2]);
+  }
+  return result;
+}
+
+function reverseArrayInPairs(arr) {
+  const result = [];
+  for (let i = 0; i < arr.length; i += 2) {
+    if (arr[i + 1] !== undefined) {
+      result.unshift(arr[i], arr[i + 1]);
+    } else {
+      result.unshift(arr[i]);
+    }
+  }
+  return result;
+}
+
+
+function rotateArray(arr, k) {
+  k %= arr.length; // Handle cases where k is larger than array length
+  return [...arr.slice(k), ...arr.slice(0, k)];
+}
+
+function earclipRings(model, ring, holes2 = []) {
+  
+  if (ring.length < 3) {return;}
+  let displayVerts = [];
+  for (let i = 0; i < ring.length; i++) {
+    displayVerts.push(ring[i], 0, 0, 0);
+  }
+  
+  for (let i = 0; i < holes2.length; i++) {
+    //holes2[i].reverse();
+    for (let j = 0; j < holes2[i].length; j++) {
+      displayVerts.push(holes2[i][j], i+1, 0, 0);
+    }
+  }
+  
+  for (let i = 0; i < displayVerts.length; i += 4) {
+      //Original vertex index
+      let vertIndex = displayVerts[i]; 
+      let x = model.verts[vertIndex * 3];
+      let y = -model.verts[vertIndex * 3 + 1];
+      let z = model.verts[vertIndex * 3 + 2];
+
+      let yaw = -180 * Math.PI / 180;//180, camPos[4]
+      let pitch = -89.99 * Math.PI / 180;//-89.99, camPos[3]
+
+      let x1 = x * Math.cos(yaw) - z * Math.sin(yaw);
+      let z1 = x * Math.sin(yaw) + z * Math.cos(yaw);
+
+      let y1 = y * Math.cos(pitch) - z1 * Math.sin(pitch);
+      let z2 = y * Math.sin(pitch) + z1 * Math.cos(pitch);
+
+      //Orthographic projection: ignore z2 (depth) for 2D plane
+      let newX = x1 * 25;
+      let newY = y1 * 25;
+
+      newX += 455;
+      newY += 256;
+
+      displayVerts[i + 2] = newX;
+      displayVerts[i + 3] = newY;
+
+      let w = 5, h = 5;
+      buf.fillStyle = "rgb(255, 255, 0)";
+      if (mouseX2 > newX && mouseX2 < newX + w &&
+        mouseY2 > newY && mouseY2 < newY + h) {
+        buf.fillStyle = "rgb(0, 155, 255)";
+        if (clicked) {
+            console.log(selectedVert);
+            selectedVert = selectedVert === vertIndex ? -1 : vertIndex;
+            console.log(selectedVert);
+            clicked = false;
+        }
+      }
+      buf.fillRect(newX, newY, w, h);
+    }
+
+    console.log(displayVerts);
+
+  buf.fillStyle = "rgb(0, 0, 0)";
+  buf.fillRect(0, 0, 910, 512);
+  let triangles = [];
+  let neighborChecker = [];
+  
+  let main = [];
+  let holes = {};
+      
+  for (let i = 0; i < displayVerts.length; i += 4) {
+    if (displayVerts[i+1] == displayVerts[1]) {
+      main.push(displayVerts[i+2], displayVerts[i+3], displayVerts[i]);
+    } else {
+      if (holes[displayVerts[i+1]] == null) {holes[displayVerts[i+1]] = [];}
+      holes[displayVerts[i+1]].push(displayVerts[i+2], displayVerts[i+3], displayVerts[i]);
+    }
+  }
+  console.log("Main and holes created.");
+
+  
+  //Degenerate edges
+  let degenEdges = [];
+  //TODO: Work with the degn edges/bridges to add holes to the ring
+  for (let i in holes) {
+    holes[i] = reverseArrInTris(holes[i]);
+    holes[i] = rotateArray(holes[i], holes[i].length);
+    let bestHoleVertex = 0;
+    let bestMainVertex = 0;
+    let bestVertexDistance = Infinity;
+    //TODO: Make this a VISIBILITY TEST as opposed to a DISTANCE TEST
+    for (let j = 0; j < holes[i].length; j += 3) {
+      for (let k = 0; k < main.length; k += 3) {
+      let leDist = dist3d(main[k], 0, main[k + 1],
+                          holes[i][j], 0, holes[i][j + 1]);
+        if (leDist < bestVertexDistance && bestVertexDistance == Infinity) {
+          bestHoleVertex = j;
+          bestMainVertex = k;
+          bestVertexDistance = leDist;
+        }
+      }
+    }
+    degenEdges.push([bestHoleVertex, bestMainVertex]);
+  }
+  console.log("Degen edges created.");
+  
+  //THIS SHOULD BE BETTER:
+  let curDegen = 0;
+  
+  let ogmain2 = [...main];
+  
+  curDegen = 0;
+  for (let h in holes) {
+    let a = ogmain2[degenEdges[curDegen][1]];
+    let b = ogmain2[degenEdges[curDegen][1] + 1];
+    let c = ogmain2[degenEdges[curDegen][1] + 2];
+    let pusher = [];
+    for (let i = 0; i < holes[h].length; i += 3) {
+      pusher.push(holes[h][i], holes[h][i+1], holes[h][i+2]);
+    }
+    pusher.push(holes[h][0], holes[h][1], holes[h][2], a, b, c);
+    main.splice(degenEdges[curDegen][1] + 3, 0, ...pusher);
+    curDegen++;
+  }
+
+  let ogmain = [...main];
+
+  let passes = 1;
+
+
+  for (let i2 = 0; main.length > 3*3 && i2 != Infinity; i2 += 3) {
+    let i = i2;// % main.length;
+    let x1 = main[i % main.length];
+    let y1 = main[(i+1) % main.length];
+    let ind1 = main[(i+2) % main.length];
+    let x2 = main[(i  +3) % main.length];
+    let y2 = main[(i  +4) % main.length];
+    let ind2 = main[(i  +5) % main.length];
+    let x3 = main[(i  +6) % main.length];
+    let y3 = main[(i  +7) % main.length];
+    let ind3 = main[(i  +8) % main.length];
+
+    let shouldCont = false;
+    for (let j = 0; j < ogmain.length; j += 3) {
+      if (ogmain[j] == x1 && ogmain[j + 1] == y1 || 
+         ogmain[j] == x2 && ogmain[j + 1] == y2 || 
+         ogmain[j] == x3 && ogmain[j + 1] == y3) {continue;}
+      if (is_point_in_triangle(
+        [ogmain[j], ogmain[j+1]],
+        [x1, y1],
+        [x2, y2],
+        [x3, y3])) {
+        shouldCont = true;
+        j = ogmain.length;
+      }
+    }
+    if (shouldCont) {
+      buf.fillStyle = "rgba(0, 0, 255, 0.1)";
+      //triangle(x1, y1, x2, y2, x3, y3);
+    }
+    if (shouldCont || getOrientation(x1, y1, x2, y2, x3, y3) != "counter-clockwise") {continue;}
+
+  
+    /*if (mouseX2 && mouseY2 &&
+      is_point_in_triangle([mouseX2, mouseY2],
+        [x1, y1],
+        [x2, y2],
+        [x3, y3])) {
+      //buf.fillStyle = "rgba(255, 255, 0, 1.0)";
+      neighborChecker = [x1, y1, x2, y2, x3, y3];
+    }*/
+    //triangle(x1, y1, x2, y2, x3, y3);
+    triangles.push(
+      x1, y1, ind1,
+      x2, y2, ind2,
+      x3, y3, ind3
+    );
+    main.splice((i + 3) % main.length, 3);
+    i2 -= 3;
+  }
+  triangles.push(main[0],main[1], main[2],
+                 main[3],main[4], main[5],
+                 main[6],main[7], main[8]
+                );
+  console.log("LGTM");
+
+  for (let i = 0; i < triangles.length; i += 9) {
+    let smallestAngle = getSmallestTriAngle(triangles[i], triangles[i+1], triangles[i+3], triangles[i+4], triangles[i+6], triangles[i+7]);
+    if (smallestAngle < 30) {
+      console.log("Found really bad triangle: " + smallestAngle);
+      if (findBetterTriangle(triangles, i)) {i = 0;console.log("resolved");}
+    }
+  }
+  console.log("yas");
+  
+
+  for (let i = 0; i < triangles.length; i += 9) {
+    let t = triangles;
+    passes += 0.2;
+    buf.fillStyle = "rgba(" + 255 / passes + ", 255, 0, 0.4)";
+    if (is_point_in_triangle([mouseX2, mouseY2],
+        [t[i], t[i+1]],
+        [t[i+3], t[i+4]],
+        [t[i+6], t[i+7]])) {
+      buf.fillStyle = "rgba(255, 255, 0, 1.0)";
+      //console.log(t[i], t[i+1], t[i+2], t[i+3], t[i+4], t[i+5]);
+      //console.log(neighborChecker);
+    } else {
+      let neighbors = 0;
+      for (let j = 0; j < neighborChecker.length; j += 2) {
+        if (neighborChecker[j] == t[i] && neighborChecker[j + 1] == t[i + 1] ||
+            neighborChecker[j] == t[i+3] && neighborChecker[j + 1] == t[i + 4] ||
+            neighborChecker[j] == t[i+6] && neighborChecker[j + 1] == t[i + 7]) {
+          neighbors++;
+        }
+      }
+      if (neighbors > 0) {
+        //console.log(neighbors);
+      }
+      if (neighbors >= 2) {
+        buf.fillStyle = "rgba(255, 255, 255, 1.0)";
+      }
+    }
+    buf.save();
+    //buf.translate(-455*4, -256*4);
+    triangle(t[i], t[i+1], t[i+3], t[i+4], t[i+6], t[i+7]);
+    buf.restore();
+    model.tris.push(t[i+2], t[i+5], t[i+8]);
+  }
+  //model.tris.splice(model.tris.length - 48 - 9, 48 + 9);
+  //console.log(model.tris.splice(model.tris.length - 3, 3));
+  //console.log(model.tris.splice(model.tris.length - 3, 3));
+  //model.tris.splice(model.tris.length - 3, 3);
+}
+  
+function earclipRingsOld(model, ring, holes2 = []) {
+  buf.fillStyle = "rgb(0,0,0)";
+  buf.fillRect(0,0,910,512);
+  if (ring.length < 3) {return;}
+  let displayVerts = [];
+  for (let i = 0; i < ring.length; i++) {
+    displayVerts.push(ring[i], 0, 0, 0);
+  }
+  
+  for (let i = 0; i < holes2.length; i++) {
+    //holes2[i].reverse();
+    for (let j = 0; j < holes2[i].length; j++) {
+      displayVerts.push(holes2[i][j], i+1, 0, 0);
+    }
+  }
+  
+  for (let i = 0; i < displayVerts.length; i += 4) {
+      //Original vertex index
+      let vertIndex = displayVerts[i]; 
+      let x = model.verts[vertIndex * 3];
+      let y = -model.verts[vertIndex * 3 + 1];
+      let z = model.verts[vertIndex * 3 + 2];
+
+      let yaw = -180 * Math.PI / 180;//180, camPos[4]
+      let pitch = -89.99 * Math.PI / 180;//-89.99, camPos[3]
+
+      let x1 = x * Math.cos(yaw) - z * Math.sin(yaw);
+      let z1 = x * Math.sin(yaw) + z * Math.cos(yaw);
+
+      let y1 = y * Math.cos(pitch) - z1 * Math.sin(pitch);
+      let z2 = y * Math.sin(pitch) + z1 * Math.cos(pitch);
+
+      //Orthographic projection: ignore z2 (depth) for 2D plane
+      let newX = x1 * 25;
+      let newY = y1 * 25;
+
+      newX += 455;
+      newY += 256;
+
+      displayVerts[i + 2] = newX;
+      displayVerts[i + 3] = newY;
+
+      let w = 5, h = 5;
+      buf.fillStyle = "rgb(255, 255, 0)";
+      if (mouseX2 > newX && mouseX2 < newX + w &&
+        mouseY2 > newY && mouseY2 < newY + h) {
+        buf.fillStyle = "rgb(0, 155, 255)";
+        if (clicked) {
+            console.log(selectedVert);
+            selectedVert = selectedVert === vertIndex ? -1 : vertIndex;
+            console.log(selectedVert);
+            clicked = false;
+        }
+      }
+      buf.fillRect(newX, newY, w, h);
+    }
+
+    console.log(displayVerts);
+
+  
+  let triangles = [];
+  let neighborChecker = [];
+  
+  let main = [];
+  let holes = {};
+      
+  for (let i = 0; i < displayVerts.length; i += 4) {
+    if (displayVerts[i+1] == displayVerts[1]) {
+      main.push(displayVerts[i+2], displayVerts[i+3]);
+    } else {
+      if (holes[displayVerts[i+1]] == null) {holes[displayVerts[i+1]] = [];}
+      holes[displayVerts[i+1]].push(displayVerts[i+2], displayVerts[i+3]);
+    }
+  }
+
+  
+  //Degenerate edges
+  let degenEdges = [];
+  //TODO: Work with the degn edges/bridges to add holes to the ring
+  for (let i in holes) {
+    holes[i] = reverseArrayInPairs(holes[i]);
+    holes[i] = rotateArray(holes[i], holes[i].length);
+    let bestHoleVertex = 0;
+    let bestMainVertex = 0;
+    let bestVertexDistance = Infinity;
+    //TODO: Make this a VISIBILITY TEST as opposed to a DISTANCE TEST
+    for (let j = 0; j < holes[i].length; j += 2) {
+      for (let k = 0; k < main.length; k += 2) {
+      let leDist = dist3d(main[k], 0, main[k + 1],
+                          holes[i][j], 0, holes[i][j + 1]);
+        if (leDist < bestVertexDistance && bestVertexDistance == Infinity) {
+          bestHoleVertex = j;
+          bestMainVertex = k;
+          bestVertexDistance = leDist;
+        }
+      }
+    }
+    degenEdges.push([bestHoleVertex, bestMainVertex]);
+  }
+  
+  //THIS SHOULD BE BETTER:
+  let curDegen = 0;
+  
+  let ogmain2 = [...main];
+  
+  curDegen = 0;
+  for (let h in holes) {
+    let a = ogmain2[degenEdges[curDegen][1]];
+    let b = ogmain2[degenEdges[curDegen][1] + 1];
+    let pusher = [];
+    for (let i = 0; i < holes[h].length; i += 2) {
+      pusher.push(holes[h][i], holes[h][i+1]);
+    }
+    pusher.push(holes[h][0], holes[h][1], a, b);
+    main.splice(degenEdges[curDegen][1] + 2, 0, ...pusher);
+    curDegen++;
+  }
+
+  let ogmain = [...main];
+
+  let passes = 1;
+
+
+  for (let i2 = 0; main.length > 6 && i2 != Infinity; i2 += 2) {
+    let i = i2;// % main.length;
+    let x1 = main[i % main.length];
+    let y1 = main[(i+1) % main.length];
+    let x2 = main[(i  +2) % main.length];
+    let y2 = main[(i+1+2) % main.length];
+    let x3 = main[(i  +4) % main.length];
+    let y3 = main[(i+1+4) % main.length];
+
+    let shouldCont = false;
+    for (let j = 0; j < ogmain.length; j += 2) {
+      if (ogmain[j] == x1 && ogmain[j + 1] == y1 || 
+         ogmain[j] == x2 && ogmain[j + 1] == y2 || 
+         ogmain[j] == x3 && ogmain[j + 1] == y3) {continue;}
+      if (is_point_in_triangle(
+        [ogmain[j], ogmain[j+1]],
+        [x1, y1],
+        [x2, y2],
+        [x3, y3])) {
+        shouldCont = true;
+        j = ogmain.length;
+      }
+    }
+    console.log(shouldCont);
+    if (shouldCont || getOrientation(x1, y1, x2, y2, x3, y3) != "counter-clockwise") {continue;}
+    
+    triangles.push(x1, y1, x2, y2, x3, y3);
+    main.splice((i + 2) % main.length, 2);
+    i2 -= 2;
+  }
+  triangles.push(main[0],main[1],main[2],main[3],main[4],main[5]);
+
+  for (let i = 0; i < triangles.length; i += 6) {
+    let smallestAngle = getSmallestTriAngle(triangles[i], triangles[i+1], triangles[i+2], triangles[i+3], triangles[i+4], triangles[i+5]);
+    if (smallestAngle < 30) {
+      if (findBetterTriangle(triangles, i)) {
+        i = 0;
+      }
+    }
+  }
+  
+
+  for (let i = 0; i < triangles.length; i += 6) {
+    let t = triangles;
+    passes += 0.2;
+    buf.fillStyle = "rgba(" + 255 / passes + ", 255, 0, 0.4)";
+    if (is_point_in_triangle([mouseX2, mouseY2],
+        [t[i], t[i+1]],
+        [t[i+2], t[i+3]],
+        [t[i+4], t[i+5]])) {
+      buf.fillStyle = "rgba(255, 255, 0, 1.0)";
+    } else {
+      let neighbors = 0;
+      for (let j = 0; j < neighborChecker.length; j += 2) {
+        if (neighborChecker[j] == t[i] && neighborChecker[j + 1] == t[i + 1] ||
+            neighborChecker[j] == t[i+2] && neighborChecker[j + 1] == t[i + 3] ||
+            neighborChecker[j] == t[i+4] && neighborChecker[j + 1] == t[i + 5]) {
+          neighbors++;
+        }
+      }
+      if (neighbors >= 2) {
+        buf.fillStyle = "rgba(255, 255, 255, 1.0)";
+      }
+    }
+    triangle(t[i], t[i+1], t[i+2], t[i+3], t[i+4], t[i+5]);
+  }
+}
+
+function connectRings(model, ringIndexA, ringIndexB, offsetA = 0, offsetB = 0, flipit = 0) {
+  let ringA;
+  let ringB;
+  if (ringIndexA != undefined) {
+    if (Object.prototype.toString.call(ringIndexA) == "[object Number]") {
+      ringA = model.rings[ringIndexA];
+    } else {
+      ringA = ringIndexA;
+    }
+    
+    if (Object.prototype.toString.call(ringIndexB) == "[object Number]") {
+      ringB = model.rings[ringIndexB];
+    } else {
+      ringB = ringIndexB;
+    }
+  } else {
+    ringA = model.rings[model.rings.length - 2];
+    ringB = model.rings[model.rings.length - 1];
+  }
+
+
+  let m = ringA.length;
+  let n = ringB.length;
+
+  let i = 0, j = 0;
+  /*while (i < m) {
+    model.tris.push(ringA[i], ringA[(i + 1) % m], ringB[i]);
+    model.tris.push(ringB[i], ringA[(i + 1) % m], ringB[(i + 1) % m]);
+    i++;
+  }*/
+  let currA = offsetA % m, currB = offsetB % n;
+
+  while (i < m || j < n) {
+    let nextA = (currA + 1) % m;
+    let nextB = (currB + 1) % n;
+
+    let tA = (i + 1) / m;
+    let tB = (j + 1) / n;
+
+    if ((i < m && tA <= tB) || j >= n) {
+      if (flipit) {
+        model.tris.push(ringA[currA],  ringB[currB], ringA[nextA]);
+      } else {
+        model.tris.push(ringA[currA], ringA[nextA], ringB[currB]);
+      }
+      currA = nextA;
+      i++;
+    } else {
+      if (flipit) {
+        model.tris.push(ringA[currA], ringB[currB], ringB[nextB]);
+      } else {
+        model.tris.push(ringA[currA], ringB[nextB], ringB[currB]);
+      }
+      currB = nextB;
+      j++;
+    }
+  }
+}
+
+
+
+
+
+function pushBoxOntoModel(model, x, y, z, w, h, d, bIDs, bWs) {
+  let zi = model.verts.length / 3;
+  //alert(zi + ", " + model.tris[model.tris.length - 1]);
+  model.verts.push(x-w,y-h,z-d, x+w,y-h,z-d,
+                   x-w,y-h,z+d, x+w,y-h,z+d,
+                   x-w,y+h,z-d, x+w,y+h,z-d,
+                   x-w,y+h,z+d, x+w,y+h,z+d);
+  model.tris.push(zi+0, zi+1, zi+2, zi+2, zi+1, zi+3,
+                  zi+4, zi+6, zi+5, zi+6, zi+7, zi+5,
+                  zi+2, zi+3, zi+6, zi+6, zi+3, zi+7,
+                  zi+0, zi+4, zi+1, zi+4, zi+5, zi+1,
+                  zi+0, zi+2, zi+4, zi+4, zi+2, zi+6,
+                  zi+1, zi+5, zi+3, zi+3, zi+5, zi+7);
+
+  for (let i = 0; i < 8; i++) {
+    model.boneIDs.push(bIDs[0],bIDs[1],bIDs[2],bIDs[3]);
+    model.boneWeights.push(bWs[0],bWs[1],bWs[2],bWs[3]);
+  }
+};
+
+
+function pushFlatBoxOntoModel(model, x, y, z, w, h, d, bIDs, bWs) {
+  let zi = model.verts.length / 3;
+
+  const c = [
+    x-w, y-h, z-d,
+    x+w, y-h, z-d,
+    x-w, y-h, z+d,
+    x+w, y-h, z+d,
+    x-w, y+h, z-d,
+    x+w, y+h, z-d,
+    x-w, y+h, z+d,
+    x+w, y+h, z+d 
+  ];
+
+  model.verts.push(
+    //Bottom (0,1,2,3)
+    c[0*3],c[0*3+1],c[0*3+2], c[1*3],c[1*3+1],c[1*3+2], c[2*3],c[2*3+1],c[2*3+2], c[3*3],c[3*3+1],c[3*3+2],
+    //Top (4,5,6,7)
+    c[4*3],c[4*3+1],c[4*3+2], c[5*3],c[5*3+1],c[5*3+2], c[6*3],c[6*3+1],c[6*3+2], c[7*3],c[7*3+1],c[7*3+2],
+    //Front (2,3,6,7)
+    c[2*3],c[2*3+1],c[2*3+2], c[3*3],c[3*3+1],c[3*3+2], c[6*3],c[6*3+1],c[6*3+2], c[7*3],c[7*3+1],c[7*3+2],
+    //Back (0,1,4,5)
+    c[0*3],c[0*3+1],c[0*3+2], c[1*3],c[1*3+1],c[1*3+2], c[4*3],c[4*3+1],c[4*3+2], c[5*3],c[5*3+1],c[5*3+2],
+    //Left (0,2,4,6)
+    c[0*3],c[0*3+1],c[0*3+2], c[2*3],c[2*3+1],c[2*3+2], c[4*3],c[4*3+1],c[4*3+2], c[6*3],c[6*3+1],c[6*3+2],
+    //Right (1,3,5,7)
+    c[1*3],c[1*3+1],c[1*3+2], c[3*3],c[3*3+1],c[3*3+2], c[5*3],c[5*3+1],c[5*3+2], c[7*3],c[7*3+1],c[7*3+2]
+  );
+
+  for (let f = 0; f < 6; f++) {
+    let o = zi + (f * 4);
+    if (f % 2 == 0) {
+      model.tris.push(o+0, o+1, o+2, o+2, o+1, o+3);
+    } else {
+      model.tris.push(o+0, o+2, o+1, o+2, o+3, o+1);
+    }
+  }
+
+  for (let i = 0; i < 24; i++) {
+    model.boneIDs.push(bIDs[0], bIDs[1], bIDs[2], bIDs[3]);
+    model.boneWeights.push(bWs[0], bWs[1], bWs[2], bWs[3]);
+  }
+
+  const faceNormals = [
+        [ 0, -1,  0],  // bottom
+        [ 0,  1,  0],  // top
+        [ 0,  0,  1],  // front (+Z)
+        [ 0,  0, -1],  // back  (-Z)
+        [-1,  0,  0],  // left  (-X)
+        [ 1,  0,  0]   // right (+X)
+    ];
+
+    for (let f = 0; f < 6; f++) {
+        const n = faceNormals[f];
+        // Push the same normal 4 times (one for each vertex of the face)
+        for (let v = 0; v < 4; v++) {
+            model.normals.push(n[0], n[1], n[2]);
+        }
+    }
+}
+
+
+
+
+
+let updateBone = function(model, boneID, x, y, z, pitch=0, yaw=0, roll=0) {
+  pitch = degToRad(pitch);
+  yaw = degToRad(yaw);
+  roll = degToRad(roll);
+  //console.log(bone + ", " + springBones[bone] + ", " + springBones[bone].children);
+  let bone = model.bones[boneID];
+  for (let i = 0; i < bone.locoldPos.length; i++) {bone.localPos[i] = bone.locoldPos[i];}
+  let move = m4.identity();
+  move = m4.translate(move, x, y, z);
+  move = m4.xRotate(move, pitch);
+  move = m4.yRotate(move, yaw);
+  move = m4.zRotate(move, roll);
+
+  // Multiply the bone's local state by this move
+  // This ensures the rotation happens in the bone's local coordinate system
+  bone.localPos = m4.multiply(bone.localPos, move);
+  
+  //set world pos
+  let parentWorld = (bone.parent === -1) ? m4.identity() : model.bones[bone.parent].curPos;
+  bone.curPos = m4.multiply(parentWorld, bone.localPos);
+  
+  for (let i = 0; i < bone.children.length; i++) {
+    updateBone(model, bone.children[i], 0, 0, 0, 0, 0, 0);
+  }
+}
+
+
+
+
+
+function addBone(model, parent, localPos) {
+  model.bones.push(
+    {children:[],parent:parent, locoldPos:m4.identity(), localPos:localPos, curPos:m4.identity(), binvPos:m4.identity()}
+  );
+  if (parent >= 0) {
+    model.bones[parent].children.push(model.bones.length - 1);
+  }
+}
+function computeBindMatrices(model, boneIdx, parentWorld) {
+  let bone = model.bones[boneIdx];
+  
+  // World Bind Matrix = Parent World Bind * Local Bind
+  let worldPos = m4.multiply(parentWorld, bone.localPos);
+  bone.curPos = worldPos;
+  bone.binvPos = m4.inverse(worldPos);
+  bone.locoldPos = m4.multiply(m4.identity(), bone.localPos);
+  
+  bone.children.forEach(childIdx => {
+    computeBindMatrices(model, childIdx, worldPos);
+  });
+}
